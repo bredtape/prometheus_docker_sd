@@ -41,17 +41,17 @@ func TestExtractSingleContainer(t *testing.T) {
 
 			Convey("should have label", func() {
 				Convey("job", func() {
-					So(x.Labels, ShouldContainKey, model.LabelName(model.JobLabel))
+					So(x.Labels, ShouldContainKey, model.JobLabel)
 					So(x.Labels[model.JobLabel], ShouldEqual, "job1")
 				})
 
 				Convey("instance", func() {
-					So(x.Labels, ShouldContainKey, model.LabelName(model.InstanceLabel))
+					So(x.Labels, ShouldContainKey, model.InstanceLabel)
 					So(x.Labels[model.InstanceLabel], ShouldEqual, "host1/containerName")
 				})
 
 				Convey("should not have label prometheus_job", func() {
-					So(x.Labels, ShouldNotContainKey, model.LabelName("prometheus_job"))
+					So(x.Labels, ShouldNotContainKey, "prometheus_job")
 				})
 			})
 		})
@@ -79,7 +79,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
 				Convey("should have label "+model.ScrapeIntervalLabel, func() {
-					So(x.Labels, ShouldContainKey, model.LabelName(model.ScrapeIntervalLabel))
+					So(x.Labels, ShouldContainKey, model.ScrapeIntervalLabel)
 					So(x.Labels[model.ScrapeIntervalLabel], ShouldEqual, "5s")
 				})
 
@@ -96,7 +96,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
 				Convey("should have label "+model.ScrapeTimeoutLabel, func() {
-					So(x.Labels, ShouldContainKey, model.LabelName(model.ScrapeTimeoutLabel))
+					So(x.Labels, ShouldContainKey, model.ScrapeTimeoutLabel)
 					So(x.Labels[model.ScrapeTimeoutLabel], ShouldEqual, "10s")
 				})
 
@@ -113,7 +113,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
 				Convey("should have label "+model.MetricsPathLabel, func() {
-					So(x.Labels, ShouldContainKey, model.LabelName(model.MetricsPathLabel))
+					So(x.Labels, ShouldContainKey, model.MetricsPathLabel)
 					So(x.Labels[model.MetricsPathLabel], ShouldEqual, "/stuff/metrics")
 				})
 
@@ -130,12 +130,12 @@ func TestExtractSingleContainer(t *testing.T) {
 			x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
 			Convey("should have label key1", func() {
-				So(x.Labels, ShouldContainKey, model.LabelName("key1"))
+				So(x.Labels, ShouldContainKey, "key1")
 				So(x.Labels["key1"], ShouldEqual, "val1")
 			})
 
 			Convey("should not have label "+dockerLabelContainerLabelPrefix+key, func() {
-				So(x.Labels, ShouldNotContainKey, model.LabelName(dockerLabelContainerLabelPrefix+key))
+				So(x.Labels, ShouldNotContainKey, dockerLabelContainerLabelPrefix+key)
 			})
 		})
 
@@ -146,12 +146,12 @@ func TestExtractSingleContainer(t *testing.T) {
 			x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
 			Convey("should have sanitized label key _5b", func() {
-				So(x.Labels, ShouldContainKey, model.LabelName("_5b"))
+				So(x.Labels, ShouldContainKey, "_5b")
 				So(x.Labels["_5b"], ShouldEqual, "val1")
 			})
 
 			Convey("should not have label "+dockerLabelContainerLabelPrefix+key, func() {
-				So(x.Labels, ShouldNotContainKey, model.LabelName(dockerLabelContainerLabelPrefix+key))
+				So(x.Labels, ShouldNotContainKey, dockerLabelContainerLabelPrefix+key)
 			})
 		})
 
@@ -202,12 +202,12 @@ func TestExtractSingleContainer(t *testing.T) {
 	})
 }
 
-// actual model.LabelSet
+// actual map[string]string
 // expected[0] string
 func ShouldNotHaveKeyWithPrefix(actual interface{}, expected ...interface{}) string {
-	xs, ok := actual.(model.LabelSet)
+	xs, ok := actual.(map[string]string)
 	if !ok {
-		return "actual should be of type LabelSet"
+		return "actual should be of type map[string]string"
 	}
 
 	if len(expected) != 1 {

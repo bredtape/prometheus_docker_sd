@@ -58,8 +58,8 @@ const (
 )
 
 type Export struct {
-	Targets []string       `yaml:"targets"`
-	Labels  model.LabelSet `yaml:"labels,omitempty"`
+	Targets []string          `yaml:"targets"`
+	Labels  map[string]string `yaml:"labels,omitempty"`
 }
 
 // DockerSDConfig is the configuration for Docker (non-swarm) based service discovery.
@@ -158,15 +158,16 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			continue
 		}
 
-		job, exists := c.Labels[JobLabelPrefix]
+		_, exists := c.Labels[JobLabelPrefix]
 		if !exists {
 			continue
 		}
 
-		commonLabels := map[string]string{
+		labels := map[string]string{
 			dockerLabelContainerID:          c.ID,
 			dockerLabelContainerName:        c.Names[0],
 			dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode,
+			model.InstanceLabel:             instancePrefix + c.Names[0],
 		}
 
 		var scrapePort string
@@ -179,86 +180,55 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 					scrapePort = v
 
 				case ScrapeInterval:
-					commonLabels[model.ScrapeIntervalLabel] = v
+					labels[model.ScrapeIntervalLabel] = v
 				case ScrapeTimeout:
-					commonLabels[model.ScrapeTimeoutLabel] = v
+					labels[model.ScrapeTimeoutLabel] = v
 				case ScrapePath:
-					commonLabels[model.MetricsPathLabel] = v
+					labels[model.MetricsPathLabel] = v
 				case ScrapeScheme:
-					commonLabels[model.SchemeLabel] = v
+					labels[model.SchemeLabel] = v
 				}
 			} else if strings.HasPrefix(ln, ExtractLabelPrefix) {
-				commonLabels[ln[len(ExtractLabelPrefix):]] = v
+				labels[ln[len(ExtractLabelPrefix):]] = v
 			} else {
-				commonLabels[dockerLabelContainerLabelPrefix+ln] = v
+				labels[dockerLabelContainerLabelPrefix+ln] = v
 			}
 		}
 
-		var foundNetwork bool
-		for networkName, n := range c.NetworkSettings.Networks {
-
-			if networkName != targetNetworkName {
-				continue
-			}
-
-			p, found := findLowestTCPPrivatePort(c.Ports)
-			if !found {
-				continue
-			}
-			// networkLabel, exists := networkLabels[n.NetworkID]
-			// if !exists {
-			// 	_ = logger.Log("msg", "network ID not found", "networkID", n.NetworkID)
-			// 	continue
-			// }
-
-			// networkName, exists := networkLabel[dockerLabel+labelNetworkName]
-			// if !exists {
-			// 	_ = logger.Log("msg", "network name not in map", "networkLabel", networkLabel)
-			// 	continue
-			// }
-
-			// if networkName != targetNetworkName {
-			// 	_ = logger.Log("msg", "network name not matching", "network", networkName)
-			// 	continue
-			// }
-
-			labels := model.LabelSet{
-				dockerLabelNetworkIP:   model.LabelValue(n.IPAddress),
-				dockerLabelPortPrivate: model.LabelValue(strconv.FormatUint(uint64(p.PrivatePort), 10)),
-				// added
-				model.InstanceLabel: model.LabelValue(instancePrefix + c.Names[0]),
-				model.JobLabel:      model.LabelValue(job),
-			}
-
-			if p.PublicPort > 0 {
-				labels[dockerLabelPortPublic] = model.LabelValue(strconv.FormatUint(uint64(p.PublicPort), 10))
-				labels[dockerLabelPortPublicIP] = model.LabelValue(p.IP)
-			}
-
-			for k, v := range commonLabels {
-				labels[model.LabelName(k)] = model.LabelValue(v)
-			}
-
-			for k, v := range networkLabels[n.NetworkID] {
-				labels[model.LabelName(k)] = model.LabelValue(v)
-			}
-
-			var addr string
-			if scrapePort == "" {
-				addr = net.JoinHostPort(n.IPAddress, strconv.FormatUint(uint64(p.PrivatePort), 10))
-			} else {
-				addr = net.JoinHostPort(n.IPAddress, scrapePort)
-			}
-			labels[model.AddressLabel] = model.LabelValue(addr)
-
-			exports = append(exports, Export{
-				Targets: []string{addr},
-				Labels:  labels})
-		}
-
-		if !foundNetwork {
+		n, found := c.NetworkSettings.Networks[targetNetworkName]
+		if !found {
 			ignoredContainersNotInNetwork++
+			continue
 		}
+
+		p, found := findLowestTCPPrivatePort(c.Ports)
+		if !found {
+			continue
+		}
+
+		labels[dockerLabelNetworkIP] = n.IPAddress
+		labels[dockerLabelPortPrivate] = strconv.FormatUint(uint64(p.PrivatePort), 10)
+
+		if p.PublicPort > 0 {
+			labels[dockerLabelPortPublic] = strconv.FormatUint(uint64(p.PublicPort), 10)
+			labels[dockerLabelPortPublicIP] = p.IP
+		}
+
+		for k, v := range networkLabels[n.NetworkID] {
+			labels[k] = v
+		}
+
+		var addr string
+		if scrapePort == "" {
+			addr = net.JoinHostPort(n.IPAddress, strconv.FormatUint(uint64(p.PrivatePort), 10))
+		} else {
+			addr = net.JoinHostPort(n.IPAddress, scrapePort)
+		}
+		labels[model.AddressLabel] = addr
+
+		exports = append(exports, Export{
+			Targets: []string{addr},
+			Labels:  labels})
 	}
 
 	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(ignoredContainersNotInNetwork))
