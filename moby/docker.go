@@ -16,20 +16,19 @@ package moby
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/discovery/refresh"
-	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -48,26 +47,38 @@ const (
 	dockerLabelPortPublicIP         = dockerLabelPortPrefix + "public_ip"
 	userAgent                       = "github.com/bredtape/prometheus_docker_sd"
 
-	ExtractLabelPrefix            = dockerLabelContainerLabelPrefix + "prometheus_"
-	ExtractScrapeParametersPrefix = ExtractLabelPrefix + "scrape_"
-	ScrapePort                    = ExtractScrapeParametersPrefix + "port"
+	ExtractLabelPrefix  = "prometheus_"
+	JobLabelPrefix      = ExtractLabelPrefix + "job"
+	ExtractScrapePrefix = "prometheus_scrape_"
+	ScrapePort          = ExtractScrapePrefix + "port"
+	ScrapeInterval      = ExtractScrapePrefix + "interval"
+	ScrapeTimeout       = ExtractScrapePrefix + "timeout"
+	ScrapePath          = ExtractScrapePrefix + "path"
+	ScrapeScheme        = ExtractScrapePrefix + "scheme"
 )
+
+type Export struct {
+	Targets []string       `yaml:"targets"`
+	Labels  model.LabelSet `yaml:"labels,omitempty"`
+}
 
 // DockerSDConfig is the configuration for Docker (non-swarm) based service discovery.
 type DockerSDConfig struct {
-	HTTPClientConfig   config.HTTPClientConfig `yaml:",inline"`
-	Host               string                  `yaml:"host"`
-	Port               int                     `yaml:"port"`
-	HostNetworkingHost string                  `yaml:"host_networking_host"`
-	RefreshInterval    model.Duration          `yaml:"refresh_interval"`
+	HTTPClientConfig config.HTTPClientConfig `yaml:",inline"`
+	Host             string                  `yaml:"host"`
+	RefreshInterval  time.Duration           `yaml:"refresh_interval"`
+
+	// prefix for instance. The Container name is appended
+	InstancePrefix string
+	// network that the Container must be a member of
+	TargetNetwork string
 }
 
 type DockerDiscovery struct {
-	*refresh.Discovery
-	client             *client.Client
-	port               int
-	hostNetworkingHost string
-	filters            filters.Args
+	client         *client.Client
+	logger         log.Logger
+	instancePrefix string
+	targetNetwork  string
 }
 
 // NewDockerDiscovery returns a new DockerDiscovery which periodically refreshes its targets.
@@ -75,9 +86,9 @@ func NewDockerDiscovery(conf *DockerSDConfig, logger log.Logger) (*DockerDiscove
 	var err error
 
 	d := &DockerDiscovery{
-		port:               conf.Port,
-		hostNetworkingHost: conf.HostNetworkingHost,
-	}
+		logger:         logger,
+		instancePrefix: conf.InstancePrefix,
+		targetNetwork:  conf.TargetNetwork}
 
 	hostURL, err := url.Parse(conf.Host)
 	if err != nil {
@@ -88,8 +99,6 @@ func NewDockerDiscovery(conf *DockerSDConfig, logger log.Logger) (*DockerDiscove
 		client.WithHost(conf.Host),
 		client.WithAPIVersionNegotiation(),
 	}
-
-	d.filters = filters.NewArgs()
 
 	// There are other protocols than HTTP supported by the Docker daemon, like
 	// unix, which are not supported by the HTTP client. Passing HTTP client
@@ -116,18 +125,12 @@ func NewDockerDiscovery(conf *DockerSDConfig, logger log.Logger) (*DockerDiscove
 		return nil, fmt.Errorf("error setting up docker client: %w", err)
 	}
 
-	d.Discovery = refresh.NewDiscovery(
-		logger,
-		"docker",
-		time.Duration(conf.RefreshInterval),
-		d.refresh,
-	)
 	return d, nil
 }
 
-func (d *DockerDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
+func (d *DockerDiscovery) Refresh(ctx context.Context) ([]Export, error) {
 
-	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{Filters: d.filters})
+	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing containers: %w", err)
 	}
@@ -137,16 +140,26 @@ func (d *DockerDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, er
 		return nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
 
-	return extract(d.hostNetworkingHost, d.port, containers, networkLabels), nil
+	_ = d.logger.Log("containers", containers)
+	_ = d.logger.Log("networkLabels", networkLabels)
+
+	return extract(d.logger, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
 }
 
-func extract(hostNetworkingHost string, port int, containers []types.Container, networkLabels map[string]map[string]string) []*targetgroup.Group {
-	tg := &targetgroup.Group{
-		Source: "Docker",
-	}
+func extract(logger log.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Export {
+
+	exports := make([]Export, 0)
+
+	ignoredContainersNotInNetwork := 0
 
 	for _, c := range containers {
+		//_ = logger.Log("container ID", c.ID)
 		if len(c.Names) == 0 {
+			continue
+		}
+
+		job, exists := c.Labels[JobLabelPrefix]
+		if !exists {
 			continue
 		}
 
@@ -156,71 +169,114 @@ func extract(hostNetworkingHost string, port int, containers []types.Container, 
 			dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode,
 		}
 
+		var scrapePort string
 		for k, v := range c.Labels {
 			ln := strutil.SanitizeLabelName(k)
-			commonLabels[dockerLabelContainerLabelPrefix+ln] = v
+
+			if strings.HasPrefix(ln, ExtractScrapePrefix) {
+				switch k {
+				case ScrapePort:
+					scrapePort = v
+
+				case ScrapeInterval:
+					commonLabels[model.ScrapeIntervalLabel] = v
+				case ScrapeTimeout:
+					commonLabels[model.ScrapeTimeoutLabel] = v
+				case ScrapePath:
+					commonLabels[model.MetricsPathLabel] = v
+				case ScrapeScheme:
+					commonLabels[model.SchemeLabel] = v
+				}
+			} else if strings.HasPrefix(ln, ExtractLabelPrefix) {
+				commonLabels[ln[len(ExtractLabelPrefix):]] = v
+			} else {
+				commonLabels[dockerLabelContainerLabelPrefix+ln] = v
+			}
 		}
 
-		for _, n := range c.NetworkSettings.Networks {
-			var added bool
+		var foundNetwork bool
+		for networkName, n := range c.NetworkSettings.Networks {
 
-			for _, p := range c.Ports {
-				if p.Type != "tcp" {
-					continue
-				}
-
-				labels := model.LabelSet{
-					dockerLabelNetworkIP:   model.LabelValue(n.IPAddress),
-					dockerLabelPortPrivate: model.LabelValue(strconv.FormatUint(uint64(p.PrivatePort), 10)),
-				}
-
-				if p.PublicPort > 0 {
-					labels[dockerLabelPortPublic] = model.LabelValue(strconv.FormatUint(uint64(p.PublicPort), 10))
-					labels[dockerLabelPortPublicIP] = model.LabelValue(p.IP)
-				}
-
-				for k, v := range commonLabels {
-					labels[model.LabelName(k)] = model.LabelValue(v)
-				}
-
-				for k, v := range networkLabels[n.NetworkID] {
-					labels[model.LabelName(k)] = model.LabelValue(v)
-				}
-
-				addr := net.JoinHostPort(n.IPAddress, strconv.FormatUint(uint64(p.PrivatePort), 10))
-				labels[model.AddressLabel] = model.LabelValue(addr)
-				tg.Targets = append(tg.Targets, labels)
-				added = true
+			if networkName != targetNetworkName {
+				continue
 			}
 
-			if !added {
-				// Use fallback port when no exposed ports are available or if all are non-TCP
-				labels := model.LabelSet{
-					dockerLabelNetworkIP: model.LabelValue(n.IPAddress),
-				}
-
-				for k, v := range commonLabels {
-					labels[model.LabelName(k)] = model.LabelValue(v)
-				}
-
-				for k, v := range networkLabels[n.NetworkID] {
-					labels[model.LabelName(k)] = model.LabelValue(v)
-				}
-
-				// Containers in host networking mode don't have ports,
-				// so they only end up here, not in the previous loop.
-				var addr string
-				if c.HostConfig.NetworkMode != "host" {
-					addr = net.JoinHostPort(n.IPAddress, strconv.FormatUint(uint64(port), 10))
-				} else {
-					addr = hostNetworkingHost
-				}
-
-				labels[model.AddressLabel] = model.LabelValue(addr)
-				tg.Targets = append(tg.Targets, labels)
+			p, found := findLowestTCPPrivatePort(c.Ports)
+			if !found {
+				continue
 			}
+			// networkLabel, exists := networkLabels[n.NetworkID]
+			// if !exists {
+			// 	_ = logger.Log("msg", "network ID not found", "networkID", n.NetworkID)
+			// 	continue
+			// }
+
+			// networkName, exists := networkLabel[dockerLabel+labelNetworkName]
+			// if !exists {
+			// 	_ = logger.Log("msg", "network name not in map", "networkLabel", networkLabel)
+			// 	continue
+			// }
+
+			// if networkName != targetNetworkName {
+			// 	_ = logger.Log("msg", "network name not matching", "network", networkName)
+			// 	continue
+			// }
+
+			labels := model.LabelSet{
+				dockerLabelNetworkIP:   model.LabelValue(n.IPAddress),
+				dockerLabelPortPrivate: model.LabelValue(strconv.FormatUint(uint64(p.PrivatePort), 10)),
+				// added
+				model.InstanceLabel: model.LabelValue(instancePrefix + c.Names[0]),
+				model.JobLabel:      model.LabelValue(job),
+			}
+
+			if p.PublicPort > 0 {
+				labels[dockerLabelPortPublic] = model.LabelValue(strconv.FormatUint(uint64(p.PublicPort), 10))
+				labels[dockerLabelPortPublicIP] = model.LabelValue(p.IP)
+			}
+
+			for k, v := range commonLabels {
+				labels[model.LabelName(k)] = model.LabelValue(v)
+			}
+
+			for k, v := range networkLabels[n.NetworkID] {
+				labels[model.LabelName(k)] = model.LabelValue(v)
+			}
+
+			var addr string
+			if scrapePort == "" {
+				addr = net.JoinHostPort(n.IPAddress, strconv.FormatUint(uint64(p.PrivatePort), 10))
+			} else {
+				addr = net.JoinHostPort(n.IPAddress, scrapePort)
+			}
+			labels[model.AddressLabel] = model.LabelValue(addr)
+
+			exports = append(exports, Export{
+				Targets: []string{addr},
+				Labels:  labels})
+		}
+
+		if !foundNetwork {
+			ignoredContainersNotInNetwork++
 		}
 	}
 
-	return []*targetgroup.Group{tg}
+	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(ignoredContainersNotInNetwork))
+	return exports
+}
+
+func findLowestTCPPrivatePort(xs []types.Port) (types.Port, bool) {
+	min := uint16(math.MaxUint16)
+	var entry types.Port
+	for _, x := range xs {
+		if x.Type != "tcp" {
+			continue
+		}
+		if x.PrivatePort < min {
+			min = x.PrivatePort
+			entry = x
+		}
+	}
+
+	return entry, min < math.MaxUint16
 }

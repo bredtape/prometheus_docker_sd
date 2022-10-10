@@ -5,6 +5,7 @@ volumes:
 
 networks:
   metrics-net:  
+    external: true
 
 services:
   prometheus:
@@ -18,10 +19,21 @@ services:
     ports:
       - 9090:9090
     restart: always    
+    networks:
+      - metrics-net
 
   app1:
     build: app1  
+    environment:
+      PORT: 2000
     labels:
       prometheus_job: job_app
       prometheus_key1: val1
+      prometheus_scrape_port: 2001
+      prometheus_scrape_interval: 7s
+      prometheus_scrape_timeout: 14s
     restart: always
+    expose: 
+      - 2000
+    networks:
+      - metrics-net      
