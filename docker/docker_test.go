@@ -48,7 +48,7 @@ func TestExtractSingleContainer(t *testing.T) {
 
 				Convey("instance", func() {
 					So(x.Labels, ShouldContainKey, model.InstanceLabel)
-					So(x.Labels[model.InstanceLabel], ShouldEqual, "host1/containerName")
+					So(x.Labels[model.InstanceLabel], ShouldEqual, "host1/containerName:2000")
 				})
 
 				Convey("should not have label prometheus_job", func() {
@@ -77,6 +77,11 @@ func TestExtractSingleContainer(t *testing.T) {
 
 				Convey("should have target with port 2001", func() {
 					So(x.Targets, ShouldResemble, []string{"ip1:2001"})
+				})
+
+				Convey("instance", func() {
+					So(x.Labels, ShouldContainKey, model.InstanceLabel)
+					So(x.Labels[model.InstanceLabel], ShouldEqual, "host1/containerName:2001")
 				})
 
 				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+ExtractScrapePrefix, func() {

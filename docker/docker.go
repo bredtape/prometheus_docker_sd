@@ -163,9 +163,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 		labels := map[string]string{
 			dockerLabelContainerID:          c.ID,
 			dockerLabelContainerName:        c.Names[0],
-			dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode,
-			model.InstanceLabel:             instancePrefix + c.Names[0],
-		}
+			dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode}
 
 		var scrapePort string
 		for k, v := range c.Labels {
@@ -224,13 +222,13 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			labels[k] = v
 		}
 
-		var addr string
 		if scrapePort == "" {
-			addr = net.JoinHostPort(n.IPAddress, strconv.FormatUint(uint64(p.PrivatePort), 10))
-		} else {
-			addr = net.JoinHostPort(n.IPAddress, scrapePort)
+			scrapePort = strconv.FormatUint(uint64(p.PrivatePort), 10)
 		}
+
+		addr := net.JoinHostPort(n.IPAddress, scrapePort)
 		labels[model.AddressLabel] = addr
+		labels[model.InstanceLabel] = instancePrefix + c.Names[0] + ":" + scrapePort
 
 		exports = append(exports, Export{
 			Targets: []string{addr},
