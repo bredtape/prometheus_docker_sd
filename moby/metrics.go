@@ -16,9 +16,15 @@ var (
 		Help:      "Number of containers discovered with the 'prometheus_job' label set, but not in the target network"},
 		[]string{"target_network"})
 
+	metric_ignored_no_ports = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "containers_no_exposed_ports",
+		Help:      "Number of containers discovered with the 'prometheus_job' label set, but with no exposed TCP ports"},
+		[]string{"target_network"})
+
 	metric_multiple_ports = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "containers_multiple_ports_not_explicit_total",
-		Help:      "Number of containers discovered with the 'prometheus_job' label set, with multiple exposed ports, but the prometheus_scrape_port is not defined"},
+		Help:      "Number of containers discovered with the 'prometheus_job' label set, with multiple exposed TCP ports, but the prometheus_scrape_port is not defined"},
 		[]string{"target_network"})
 )

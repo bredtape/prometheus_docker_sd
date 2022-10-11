@@ -150,7 +150,8 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 
 	exports := make([]Export, 0)
 
-	ignoredContainersNotInNetwork := 0
+	notInNetwork := 0
+	noPorts := 0
 	multiplePortsNotExplicit := 0
 
 	for _, c := range containers {
@@ -197,12 +198,13 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 
 		n, found := c.NetworkSettings.Networks[targetNetworkName]
 		if !found {
-			ignoredContainersNotInNetwork++
+			notInNetwork++
 			continue
 		}
 
 		p, candidates, found := findLowestTCPPrivatePort(c.Ports)
 		if !found {
+			noPorts++
 			continue
 		}
 
@@ -235,7 +237,8 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			Labels:  labels})
 	}
 
-	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(ignoredContainersNotInNetwork))
+	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(notInNetwork))
+	metric_ignored_no_ports.WithLabelValues(targetNetworkName).Set(float64(noPorts))
 	metric_multiple_ports.WithLabelValues(targetNetworkName).Set(float64(multiplePortsNotExplicit))
 	return exports
 }

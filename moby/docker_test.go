@@ -59,6 +59,14 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("metric containers ignored, should be 0", func() {
 				So(testutil.ToFloat64(metric_ignored_containers_not_in_network.WithLabelValues(targetNetwork)), ShouldEqual, 0)
 			})
+
+			Convey("metric containers ignored no ports, should be 0", func() {
+				So(testutil.ToFloat64(metric_ignored_no_ports.WithLabelValues(targetNetwork)), ShouldEqual, 0)
+			})
+
+			Convey("metric containers multiple ports, scrape port explicit, should be 0", func() {
+				So(testutil.ToFloat64(metric_multiple_ports.WithLabelValues(targetNetwork)), ShouldEqual, 0)
+			})
 		})
 
 		Convey("with label "+ScrapePort, func() {
@@ -230,6 +238,34 @@ func TestExtractSingleContainer(t *testing.T) {
 
 			Convey("metric containers ignored, should be 1", func() {
 				So(testutil.ToFloat64(metric_ignored_containers_not_in_network.WithLabelValues(targetNetwork)), ShouldEqual, 1)
+			})
+		})
+
+		Convey("no ports", func() {
+			c.Ports = nil
+
+			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+
+			Convey("should have no entries", func() {
+				So(xs, ShouldBeEmpty)
+			})
+
+			Convey("metric containers ignored no ports, should be 1", func() {
+				So(testutil.ToFloat64(metric_ignored_no_ports.WithLabelValues(targetNetwork)), ShouldEqual, 1)
+			})
+		})
+
+		Convey("not a tcp port", func() {
+			c.Ports[0].Type = "udp"
+
+			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+
+			Convey("should have no entries", func() {
+				So(xs, ShouldBeEmpty)
+			})
+
+			Convey("metric containers ignored no ports, should be 1", func() {
+				So(testutil.ToFloat64(metric_ignored_no_ports.WithLabelValues(targetNetwork)), ShouldEqual, 1)
 			})
 		})
 	})
