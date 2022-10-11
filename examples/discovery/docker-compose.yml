@@ -2,11 +2,15 @@ version: '3'
 
 volumes:
   prometheus_data:
+  sd_data:
 
 
 networks:
   metrics-net:
-    external: true
+    # overriding name, otherwise the docker-compose project name will be prefixed
+    name: metrics-net
+    # consider creating it as external
+    #external: true
 
 services:
   prometheus:
@@ -17,22 +21,40 @@ services:
     volumes:
       - ./prometheus/:/etc/prometheus/
       - prometheus_data:/prometheus
+      - sd_data:/sd_data:ro
     ports:
       - 9090:9090
     restart: always
     networks:
       - metrics-net
+    labels:
+      prometheus_job: prometheus
+
+  discover:
+    build: ../..
+    command:
+      - --instance-prefix=this_server
+      - --output-file=/sd_data/docker_sd.yml
+      - --refresh-interval=5s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sd_data:/sd_data
+    networks:
+      - metrics-net
+    restart: always
+    labels:
+      prometheus_job: docker_sd
 
   app1:
-    build: app1
+    build: ../app1
     environment:
       PORT: 2000
     labels:
       prometheus_job: job_app
       prometheus_key1: val1
       prometheus_scrape_port: 2001
-      prometheus_scrape_interval: 7s
-      prometheus_scrape_timeout: 14s
+      prometheus_scrape_interval: 14s
+      prometheus_scrape_timeout: 7s
     restart: always
     expose:
       - 2000
@@ -40,14 +62,16 @@ services:
       - metrics-net
 
   app2:
-    build: app1
+    build: ../app1
     environment:
-      PORT: 2001
+      PORT: 2500
     labels:
       prometheus_job: job_app
-      prometheus_scrape_port: 2001
+      prometheus_scrape_port: 2500
     restart: always
     expose:
       - 2000
+      - 2500
+      - 3000
     networks:
       - metrics-net

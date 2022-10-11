@@ -1,0 +1,55 @@
+version: '3'
+
+volumes:
+  prometheus_data:
+
+
+networks:
+  metrics-net:
+    # overriding name, otherwise the docker-compose project name will be prefixed
+    name: metrics-net
+    # consider creating it as external
+    #external: true
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.39.0
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 9090:9090
+    restart: always
+    networks:
+      - metrics-net
+    user: root # Prometheus image is build to use non-root. Needed to access /var/run/docker.sock. It is assumed that the user is in the Docker group
+
+  app1:
+    build: ../app1
+    environment:
+      PORT: 2001
+    labels:
+      prometheus_job: job_app
+      prometheus_key1: val1
+      prometheus_scrape_port: 2001
+    restart: always
+    expose:
+      - 2001
+    networks:
+      - metrics-net
+
+  app2:
+    build: ../app1
+    labels:
+      prometheus_job: job_app
+    restart: always
+    expose:
+      # this will produce 2 entries in the Prometheus service discovery!
+      - 2000
+      - 3000
+    networks:
+      - metrics-net
