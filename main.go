@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -11,38 +13,47 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/namsral/flag"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	outputFile string
+	outputFile  string
+	httpAddress string
 
 	logger log.Logger
 )
 
 const (
-	ENV_PREFIX = "promethes_docker_sd"
+	envPrefix = "promethes_docker_sd"
 )
 
 func parseArgs() *docker.Config {
-	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(ENV_PREFIX), flag.PanicOnError)
+	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(envPrefix), flag.ExitOnError)
 	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s <options>\n", os.Args[0])
 		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps and replace any - with _\n", strings.ToUpper(envPrefix))
 	}
 
 	var dockerHost, instancePrefix, targetNetworkName string
 	var refreshInterval time.Duration
-	flag.StringVar(&outputFile, "output-file", "docker_sd.json", "Output .json file with format as specified in https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config")
-	flag.StringVar(&dockerHost, "docker-host", "unix:///var/run/docker.sock", "Docker host url")
-	flag.StringVar(&targetNetworkName, "target-network-name", "metrics-net", "Network that the containers must be a member of to be considered. Consider making it 'external' in the docker-compose...")
-	flag.StringVar(&instancePrefix, "instance-prefix", "", "Prefix added to Container name to form the 'instance' label. Required")
-	flag.DurationVar(&refreshInterval, "refresh-interval", 5*time.Second, "Refresh interval to query the Docker host for containers")
+	fs.StringVar(&outputFile, "output-file", "docker_sd.json", "Output .json file with format as specified in https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config")
+	fs.StringVar(&dockerHost, "docker-host", "unix:///var/run/docker.sock", "Docker host url")
+	fs.StringVar(&targetNetworkName, "target-network-name", "metrics-net", "Network that the containers must be a member of to be considered. Consider making it 'external' in the docker-compose...")
+	fs.StringVar(&instancePrefix, "instance-prefix", "", "Prefix added to Container name to form the 'instance' label. Required")
+	fs.DurationVar(&refreshInterval, "refresh-interval", 60*time.Second, "Refresh interval to query the Docker host for containers")
+	fs.StringVar(&httpAddress, "http-address", ":9200", "http address to serve metrics on")
 	var logLevel string
-	flag.StringVar(&logLevel, "log-level", "DEBUG", "Specify log level (DEBUG, INFO, WARN, ERROR)")
+	fs.StringVar(&logLevel, "log-level", "DEBUG", "Specify log level (DEBUG, INFO, WARN, ERROR)")
 
 	var help bool
-	flag.BoolVar(&help, "help", false, "Display help")
-	flag.Parse()
+	fs.BoolVar(&help, "help", false, "Display help")
+
+	err := fs.Parse(os.Args[1:])
+	if err != nil {
+		bail(fs, "failed to parse args: %v", err)
+	}
 
 	if help {
 		fs.Usage()
@@ -53,9 +64,12 @@ func parseArgs() *docker.Config {
 	logger = level.NewFilter(logger, level.Allow(level.ParseDefault(logLevel, level.InfoValue())))
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
-	if len(strings.TrimSpace(targetNetworkName)) == 0 {
-		_ = logger.Log("invalid target network name", "target-network-name", targetNetworkName)
-		os.Exit(3)
+	if len(targetNetworkName) == 0 {
+		bail(fs, "'target-network-name' required")
+	}
+
+	if len(instancePrefix) == 0 {
+		bail(fs, "'instance-prefix' required")
 	}
 
 	return &docker.Config{
@@ -72,10 +86,12 @@ func main() {
 	logger := log.NewJSONLogger(os.Stdout)
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
+	go http.ListenAndServe(httpAddress, promhttp.Handler())
+
 	d, err := docker.New(config, logger)
 	if err != nil {
 		_ = level.Error(logger).Log("failed to configure discovery", err)
-		os.Exit(3)
+		os.Exit(4)
 	}
 
 	t := time.After(0)
@@ -106,4 +122,10 @@ func writeResultsToFile(outputFile string, xs []docker.Export) error {
 		return errors.Wrap(err, "failed to marshal")
 	}
 	return os.WriteFile(outputFile, data, 0644)
+}
+
+func bail(fs *flag.FlagSet, format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...)
+	fs.Usage()
+	os.Exit(3)
 }
