@@ -197,14 +197,19 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			continue
 		}
 
-		p, candidates, found := findLowestTCPPrivatePort(c.Ports)
+		// match scrape port, fallback to lowest if not defined/found
+		p, found := matchScrapePort(c.Ports, scrapePort)
 		if !found {
-			noPorts++
-			continue
-		}
+			pp, candidates, found := findLowestTCPPrivatePort(c.Ports)
+			if !found {
+				noPorts++
+				continue
+			}
+			p = pp
 
-		if scrapePort == "" && candidates > 1 {
-			multiplePortsNotExplicit++
+			if scrapePort == "" && candidates > 1 {
+				multiplePortsNotExplicit++
+			}
 		}
 
 		labels[dockerLabelNetworkIP] = n.IPAddress
@@ -237,6 +242,18 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 	metric_ignored_no_ports.WithLabelValues(targetNetworkName).Set(float64(noPorts))
 	metric_multiple_ports.WithLabelValues(targetNetworkName).Set(float64(multiplePortsNotExplicit))
 	return exports
+}
+
+func matchScrapePort(xs []types.Port, scrapePort string) (types.Port, bool) {
+	for _, x := range xs {
+		if x.Type != "tcp" {
+			continue
+		}
+		if strconv.FormatUint(uint64(x.PrivatePort), 10) == scrapePort {
+			return x, true
+		}
+	}
+	return types.Port{}, false
 }
 
 func findLowestTCPPrivatePort(xs []types.Port) (types.Port, int, bool) {
