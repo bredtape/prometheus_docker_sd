@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,7 +40,7 @@ func parseArgs() *docker.Config {
 
 	var dockerHost, instancePrefix, targetNetworkName string
 	var refreshInterval time.Duration
-	fs.StringVar(&outputFile, "output-file", "docker_sd.json", "Output .json file with format as specified in https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config")
+	fs.StringVar(&outputFile, "output-file", "docker_sd.yml", "Output .json, .yml or .yaml file with format as specified in https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config")
 	fs.StringVar(&dockerHost, "docker-host", "unix:///var/run/docker.sock", "Docker host url")
 	fs.StringVar(&targetNetworkName, "target-network-name", "metrics-net", "Network that the containers must be a member of to be considered. Consider making it 'external' in the docker-compose...")
 	fs.StringVar(&instancePrefix, "instance-prefix", "", "Prefix added to Container name to form the 'instance' label. Required")
@@ -86,6 +88,7 @@ func main() {
 	logger := log.NewJSONLogger(os.Stdout)
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
+	_ = level.Info(logger).Log("msg", "starting http handler", "address", httpAddress)
 	go http.ListenAndServe(httpAddress, promhttp.Handler())
 
 	d, err := docker.New(config, logger)
@@ -103,6 +106,7 @@ func main() {
 			// refresh timer
 			t = time.After(config.RefreshInterval)
 
+			_ = level.Debug(logger).Log("msg", "refresh")
 			xs, err := d.Refresh(ctx)
 			if err != nil {
 				_ = level.Error(logger).Log("msg", "failed to refresh containers", "error", err)
@@ -117,11 +121,22 @@ func main() {
 }
 
 func writeResultsToFile(outputFile string, xs []docker.Export) error {
-	data, err := yaml.Marshal(xs)
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal")
+	switch filepath.Ext(strings.ToLower(outputFile)) {
+	case ".yml", ".yaml":
+		data, err := yaml.Marshal(xs)
+		if err != nil {
+			return errors.Wrap(err, "failed to marshal")
+		}
+		return os.WriteFile(outputFile, data, 0644)
+	case ".json":
+		data, err := json.Marshal(xs)
+		if err != nil {
+			return errors.Wrap(err, "failed to marshal")
+		}
+		return os.WriteFile(outputFile, data, 0644)
+	default:
+		return fmt.Errorf("unsupported file extension in output-file: %s", outputFile)
 	}
-	return os.WriteFile(outputFile, data, 0644)
 }
 
 func bail(fs *flag.FlagSet, format string, args ...interface{}) {
