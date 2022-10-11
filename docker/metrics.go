@@ -1,4 +1,4 @@
-package moby
+package docker
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
@@ -10,6 +10,12 @@ const (
 )
 
 var (
+	metric_count = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "containers_total",
+		Help:      "Number of containers discovered"},
+		[]string{})
+
 	metric_ignored_containers_not_in_network = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "containers_not_in_target_network_total",

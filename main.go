@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bredtape/prometheus_docker_sd/moby"
+	"github.com/bredtape/prometheus_docker_sd/docker"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/namsral/flag"
@@ -24,7 +24,7 @@ const (
 	ENV_PREFIX = "promethes_docker_sd"
 )
 
-func parseArgs() *moby.DockerSDConfig {
+func parseArgs() *docker.Config {
 	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(ENV_PREFIX), flag.PanicOnError)
 	fs.Usage = func() {
 		fs.PrintDefaults()
@@ -58,7 +58,7 @@ func parseArgs() *moby.DockerSDConfig {
 		os.Exit(3)
 	}
 
-	return &moby.DockerSDConfig{
+	return &docker.Config{
 		Host:            dockerHost,
 		InstancePrefix:  instancePrefix,
 		TargetNetwork:   targetNetworkName,
@@ -72,7 +72,7 @@ func main() {
 	logger := log.NewJSONLogger(os.Stdout)
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
-	d, err := moby.NewDockerDiscovery(config, logger)
+	d, err := docker.New(config, logger)
 	if err != nil {
 		_ = level.Error(logger).Log("failed to configure discovery", err)
 		os.Exit(3)
@@ -100,7 +100,7 @@ func main() {
 	}
 }
 
-func writeResultsToFile(outputFile string, xs []moby.Export) error {
+func writeResultsToFile(outputFile string, xs []docker.Export) error {
 	data, err := yaml.Marshal(xs)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal")

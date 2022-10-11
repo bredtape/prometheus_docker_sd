@@ -1,4 +1,4 @@
-package moby
+package docker
 
 import (
 	"fmt"

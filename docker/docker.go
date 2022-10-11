@@ -11,7 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package moby
+package docker
 
 import (
 	"context"
@@ -62,8 +62,8 @@ type Export struct {
 	Labels  map[string]string `yaml:"labels,omitempty"`
 }
 
-// DockerSDConfig is the configuration for Docker (non-swarm) based service discovery.
-type DockerSDConfig struct {
+// Config is the configuration for Docker (non-swarm) based service discovery.
+type Config struct {
 	HTTPClientConfig config.HTTPClientConfig `yaml:",inline"`
 	Host             string                  `yaml:"host"`
 	RefreshInterval  time.Duration           `yaml:"refresh_interval"`
@@ -74,18 +74,18 @@ type DockerSDConfig struct {
 	TargetNetwork string
 }
 
-type DockerDiscovery struct {
+type Discovery struct {
 	client         *client.Client
 	logger         log.Logger
 	instancePrefix string
 	targetNetwork  string
 }
 
-// NewDockerDiscovery returns a new DockerDiscovery which periodically refreshes its targets.
-func NewDockerDiscovery(conf *DockerSDConfig, logger log.Logger) (*DockerDiscovery, error) {
+// New returns a new DockerDiscovery which periodically refreshes its targets.
+func New(conf *Config, logger log.Logger) (*Discovery, error) {
 	var err error
 
-	d := &DockerDiscovery{
+	d := &Discovery{
 		logger:         logger,
 		instancePrefix: conf.InstancePrefix,
 		targetNetwork:  conf.TargetNetwork}
@@ -128,8 +128,7 @@ func NewDockerDiscovery(conf *DockerSDConfig, logger log.Logger) (*DockerDiscove
 	return d, nil
 }
 
-func (d *DockerDiscovery) Refresh(ctx context.Context) ([]Export, error) {
-
+func (d *Discovery) Refresh(ctx context.Context) ([]Export, error) {
 	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing containers: %w", err)
@@ -139,9 +138,6 @@ func (d *DockerDiscovery) Refresh(ctx context.Context) ([]Export, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
-
-	_ = d.logger.Log("containers", containers)
-	_ = d.logger.Log("networkLabels", networkLabels)
 
 	return extract(d.logger, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
 }
@@ -155,7 +151,6 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 	multiplePortsNotExplicit := 0
 
 	for _, c := range containers {
-		//_ = logger.Log("container ID", c.ID)
 		if len(c.Names) == 0 {
 			continue
 		}
@@ -237,6 +232,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			Labels:  labels})
 	}
 
+	metric_count.WithLabelValues().Set(float64(len(containers)))
 	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(notInNetwork))
 	metric_ignored_no_ports.WithLabelValues(targetNetworkName).Set(float64(noPorts))
 	metric_multiple_ports.WithLabelValues(targetNetworkName).Set(float64(multiplePortsNotExplicit))
