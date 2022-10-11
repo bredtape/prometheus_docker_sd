@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/network"
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -53,6 +54,10 @@ func TestExtractSingleContainer(t *testing.T) {
 				Convey("should not have label prometheus_job", func() {
 					So(x.Labels, ShouldNotContainKey, "prometheus_job")
 				})
+			})
+
+			Convey("metric containers ignored, should be 0", func() {
+				So(testutil.ToFloat64(metric_ignored_containers_not_in_network.WithLabelValues(targetNetwork)), ShouldEqual, 0)
 			})
 		})
 
@@ -168,6 +173,10 @@ func TestExtractSingleContainer(t *testing.T) {
 						So(x.Targets, ShouldResemble, []string{"ip1:2000"})
 					})
 				})
+
+				Convey("metric containers multiple ports, scrape port not explicit, should be 1", func() {
+					So(testutil.ToFloat64(metric_multiple_ports.WithLabelValues(targetNetwork)), ShouldEqual, 1)
+				})
 			})
 
 			Convey("1000, should change target port", func() {
@@ -183,6 +192,10 @@ func TestExtractSingleContainer(t *testing.T) {
 					})
 				})
 
+				Convey("metric containers multiple ports, scrape port not explicit, should be 1", func() {
+					So(testutil.ToFloat64(metric_multiple_ports.WithLabelValues(targetNetwork)), ShouldEqual, 1)
+				})
+
 				Convey("with label "+ScrapePort, func() {
 					c.Labels[ScrapePort] = "1998"
 
@@ -196,14 +209,34 @@ func TestExtractSingleContainer(t *testing.T) {
 							So(x.Targets, ShouldResemble, []string{"ip1:1998"})
 						})
 					})
+
+					Convey("metric containers multiple ports, scrape port explicit, should be 0", func() {
+						So(testutil.ToFloat64(metric_multiple_ports.WithLabelValues(targetNetwork)), ShouldEqual, 0)
+					})
 				})
+			})
+		})
+
+		Convey("not in target network: "+targetNetwork, func() {
+			c.NetworkSettings = &types.SummaryNetworkSettings{
+				Networks: map[string]*network.EndpointSettings{
+					"other": {IPAddress: "ip1"}}}
+
+			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+
+			Convey("should have no entries", func() {
+				So(xs, ShouldBeEmpty)
+			})
+
+			Convey("metric containers ignored, should be 1", func() {
+				So(testutil.ToFloat64(metric_ignored_containers_not_in_network.WithLabelValues(targetNetwork)), ShouldEqual, 1)
 			})
 		})
 	})
 }
 
 // actual map[string]string
-// expected[0] string
+// expected string
 func ShouldNotHaveKeyWithPrefix(actual interface{}, expected ...interface{}) string {
 	xs, ok := actual.(map[string]string)
 	if !ok {

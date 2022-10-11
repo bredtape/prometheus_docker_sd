@@ -151,6 +151,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 	exports := make([]Export, 0)
 
 	ignoredContainersNotInNetwork := 0
+	multiplePortsNotExplicit := 0
 
 	for _, c := range containers {
 		//_ = logger.Log("container ID", c.ID)
@@ -178,7 +179,6 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 				switch k {
 				case ScrapePort:
 					scrapePort = v
-
 				case ScrapeInterval:
 					labels[model.ScrapeIntervalLabel] = v
 				case ScrapeTimeout:
@@ -201,9 +201,13 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			continue
 		}
 
-		p, found := findLowestTCPPrivatePort(c.Ports)
+		p, candidates, found := findLowestTCPPrivatePort(c.Ports)
 		if !found {
 			continue
+		}
+
+		if scrapePort == "" && candidates > 1 {
+			multiplePortsNotExplicit++
 		}
 
 		labels[dockerLabelNetworkIP] = n.IPAddress
@@ -232,21 +236,24 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 	}
 
 	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(ignoredContainersNotInNetwork))
+	metric_multiple_ports.WithLabelValues(targetNetworkName).Set(float64(multiplePortsNotExplicit))
 	return exports
 }
 
-func findLowestTCPPrivatePort(xs []types.Port) (types.Port, bool) {
+func findLowestTCPPrivatePort(xs []types.Port) (types.Port, int, bool) {
+	candidates := 0
 	min := uint16(math.MaxUint16)
 	var entry types.Port
 	for _, x := range xs {
 		if x.Type != "tcp" {
 			continue
 		}
+		candidates++
 		if x.PrivatePort < min {
 			min = x.PrivatePort
 			entry = x
 		}
 	}
 
-	return entry, min < math.MaxUint16
+	return entry, candidates, min < math.MaxUint16
 }
