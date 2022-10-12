@@ -15,6 +15,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/namsral/flag"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/yaml.v3"
 )
@@ -24,6 +26,16 @@ var (
 	httpAddress string
 
 	logger log.Logger
+
+	metric_attempts = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: docker.APP,
+		Name:      "discovery_attempts_total",
+		Help:      "Number of attempts to discover containers and write result"}, nil)
+
+	metric_errors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: docker.APP,
+		Name:      "discovery_attempts_errors_total",
+		Help:      "Number of attempts to discover containers and write result, that resulted in some error"}, nil)
 )
 
 func parseArgs() (*docker.Config, log.Logger) {
@@ -95,24 +107,33 @@ func main() {
 		os.Exit(4)
 	}
 
+	// init metrics
+	metric_attempts.WithLabelValues()
+	metric_errors.WithLabelValues()
+
 	t := time.After(0)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t:
+			metric_attempts.WithLabelValues().Inc()
+
 			// refresh timer
 			t = time.After(config.RefreshInterval)
 
 			_ = level.Debug(logger).Log("msg", "refresh")
 			xs, err := d.Refresh(ctx)
 			if err != nil {
+				metric_errors.WithLabelValues().Inc()
 				_ = level.Error(logger).Log("msg", "failed to refresh containers", "error", err)
-			} else {
-				err := writeResultsToFile(outputFile, xs)
-				if err != nil {
-					_ = level.Error(logger).Log("msg", "failed to write results", "error", err)
-				}
+				continue
+			}
+
+			err = writeResultsToFile(outputFile, xs)
+			if err != nil {
+				metric_errors.WithLabelValues().Inc()
+				_ = level.Error(logger).Log("msg", "failed to write results", "error", err)
 			}
 		}
 	}
