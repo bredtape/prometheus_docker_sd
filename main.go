@@ -30,7 +30,7 @@ const (
 	envPrefix = "prometheus_docker_sd"
 )
 
-func parseArgs() *docker.Config {
+func parseArgs() (*docker.Config, log.Logger) {
 	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(envPrefix), flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s <options>\n", os.Args[0])
@@ -62,10 +62,6 @@ func parseArgs() *docker.Config {
 		os.Exit(2)
 	}
 
-	logger = log.NewLogfmtLogger(os.Stderr)
-	logger = level.NewFilter(logger, level.Allow(level.ParseDefault(logLevel, level.InfoValue())))
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
-
 	if len(targetNetworkName) == 0 {
 		bail(fs, "'target-network-name' required")
 	}
@@ -74,19 +70,25 @@ func parseArgs() *docker.Config {
 		bail(fs, "'instance-prefix' required")
 	}
 
+	lvl, err := level.Parse(strings.ToLower(logLevel))
+	if err != nil {
+		bail(fs, "'log-level' invalid: %v", err)
+	}
+
+	logger = log.NewLogfmtLogger(os.Stderr)
+	logger = level.NewFilter(logger, level.Allow(lvl))
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
+
 	return &docker.Config{
 		Host:            dockerHost,
 		InstancePrefix:  instancePrefix,
 		TargetNetwork:   targetNetworkName,
-		RefreshInterval: refreshInterval}
+		RefreshInterval: refreshInterval}, logger
 }
 
 func main() {
 	ctx := context.Background()
-	config := parseArgs()
-
-	logger := log.NewJSONLogger(os.Stdout)
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
+	config, logger := parseArgs()
 
 	_ = level.Info(logger).Log("msg", "starting http handler", "address", httpAddress)
 	go http.ListenAndServe(httpAddress, promhttp.Handler())
