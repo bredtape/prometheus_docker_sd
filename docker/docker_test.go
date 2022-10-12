@@ -230,6 +230,25 @@ func TestExtractSingleContainer(t *testing.T) {
 			})
 		})
 
+		Convey("with duplicate port", func() {
+			c.Ports = append(c.Ports, types.Port{PrivatePort: 2000, Type: "tcp"})
+
+			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+
+			Convey("should have 1 entry", func() {
+				So(xs, ShouldHaveLength, 1)
+
+				x := xs[0]
+				Convey("with single target ip1:1000, picking the lowest port", func() {
+					So(x.Targets, ShouldResemble, []string{"ip1:2000"})
+				})
+			})
+
+			Convey("metric containers multiple ports, scrape port not explicit, should be 0", func() {
+				So(testutil.ToFloat64(metric_multiple_ports.WithLabelValues(targetNetwork)), ShouldEqual, 0)
+			})
+		})
+
 		Convey("not in target network: "+targetNetwork, func() {
 			c.NetworkSettings = &types.SummaryNetworkSettings{
 				Networks: map[string]*network.EndpointSettings{

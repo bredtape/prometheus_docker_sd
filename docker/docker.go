@@ -274,15 +274,22 @@ func findLowestTCPPrivatePort(xs []types.Port) (types.Port, int, bool) {
 	candidates := 0
 	min := uint16(math.MaxUint16)
 	var entry types.Port
+	seen := map[uint16]struct{}{} // the same port may be mentioned multiple times (different host IP)
 	for _, x := range xs {
 		if x.Type != "tcp" {
 			continue
 		}
-		candidates++
+
 		if x.PrivatePort < min {
 			min = x.PrivatePort
 			entry = x
 		}
+
+		if _, exists := seen[x.PrivatePort]; !exists {
+			candidates++
+		}
+
+		seen[x.PrivatePort] = struct{}{}
 	}
 
 	return entry, candidates, min < math.MaxUint16
