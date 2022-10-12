@@ -19,14 +19,14 @@ See examples/discovery for a working example.
 
 To be scraped a container must be in the configured 'target-network' (command line arg) and have a label 'prometheus_job'.
 
-| Container label            | Description                                                                                 |
-| -------------------------- | ------------------------------------------------------------------------------------------- |
-| prometheus_job             | Add target. Set job name to value                                                           |
-| prometheus\_\<key\>        | Add \<key\>' to output labels                                                               |
-| prometheus_scrape_port     | Overrules address scrape port. Should be set when the container have multiple exposed ports |
-| prometheus_scrape_interval | Set the scrape interval                                                                     |
-| prometheus_scrape_timeout  | Set the scrape timeout                                                                      |
-| prometheus_scrape_path     | Override metrics path                                                                       |
-| prometheus_scrape_scheme   | Override scheme                                                                             |
+| Container label            | Description                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| prometheus_job             | Add target. Set job name to value. Containers without this label will be ignored.            |
+| prometheus\_\<key\>        | Add \<key\>' to output labels                                                                |
+| prometheus_scrape_port     | Overrules address scrape port. Should be set when the container have multiple exposed ports. |
+| prometheus_scrape_interval | Override the scrape interval. Optional.                                                      |
+| prometheus_scrape_timeout  | Override the scrape timeout. Optional.                                                       |
+| prometheus_scrape_path     | Override metrics path. Optional.                                                             |
+| prometheus_scrape_scheme   | Override scheme. Optional.                                                                   |
 
 Metrics should indicate if a container has the 'prometheus_job' label set, but not included in targets.
