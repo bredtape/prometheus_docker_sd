@@ -26,16 +26,12 @@ var (
 	logger log.Logger
 )
 
-const (
-	envPrefix = "prometheus_docker_sd"
-)
-
 func parseArgs() (*docker.Config, log.Logger) {
-	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(envPrefix), flag.ExitOnError)
+	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(docker.APP), flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s <options>\n", os.Args[0])
 		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps and replace any - with _\n", strings.ToUpper(envPrefix))
+		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps and replace any - with _\n", strings.ToUpper(docker.APP))
 	}
 
 	var dockerHost, instancePrefix, targetNetworkName string
