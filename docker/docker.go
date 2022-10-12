@@ -62,6 +62,14 @@ type Export struct {
 	Labels  map[string]string `yaml:"labels,omitempty"`
 }
 
+type ContainerSummary struct {
+	ID                       string
+	Name                     string
+	NotInTargetNetwork       bool
+	NoPorts                  bool
+	MultiplePortsNotExplicit bool
+}
+
 // Config is the configuration for Docker (non-swarm) based service discovery.
 type Config struct {
 	HTTPClientConfig config.HTTPClientConfig `yaml:",inline"`
@@ -128,23 +136,25 @@ func New(conf *Config, logger log.Logger) (*Discovery, error) {
 	return d, nil
 }
 
-func (d *Discovery) Refresh(ctx context.Context) ([]Export, error) {
+func (d *Discovery) Refresh(ctx context.Context) ([]Export, []ContainerSummary, error) {
 	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error while listing containers: %w", err)
+		return nil, nil, fmt.Errorf("error while listing containers: %w", err)
 	}
 
 	networkLabels, err := getNetworksLabels(ctx, d.client, dockerLabel)
 	if err != nil {
-		return nil, fmt.Errorf("error while computing network labels: %w", err)
+		return nil, nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
 
-	return extract(d.logger, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
+	exports, summaries := extract(d.logger, d.instancePrefix, d.targetNetwork, containers, networkLabels)
+	return exports, summaries, nil
 }
 
-func extract(logger log.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Export {
+func extract(logger log.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) ([]Export, []ContainerSummary) {
 
 	exports := make([]Export, 0)
+	summaries := make([]ContainerSummary, 0)
 
 	notInNetwork := 0
 	noPorts := 0
@@ -154,6 +164,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 		if len(c.Names) == 0 {
 			continue
 		}
+		name := c.Names[0]
 
 		_, exists := c.Labels[jobLabelPrefix]
 		if !exists {
@@ -162,8 +173,12 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 
 		labels := map[string]string{
 			dockerLabelContainerID:          c.ID,
-			dockerLabelContainerName:        c.Names[0],
+			dockerLabelContainerName:        name,
 			dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode}
+
+		summary := ContainerSummary{
+			ID:   c.ID,
+			Name: name}
 
 		var port string
 		for k, v := range c.Labels {
@@ -195,8 +210,10 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 				"msg", "not in target network",
 				"target-network", targetNetworkName,
 				"containerID", c.ID,
-				"containerName", c.Names[0])
+				"containerName", name)
 			notInNetwork++
+			summary.NotInTargetNetwork = true
+			summaries = append(summaries, summary)
 			continue
 		}
 
@@ -209,20 +226,22 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 					"msg", "no ports found",
 					"target-network", targetNetworkName,
 					"containerID", c.ID,
-					"containerName", c.Names[0])
+					"containerName", name)
 				noPorts++
+				summary.NoPorts = true
+				summaries = append(summaries, summary)
 				continue
 			}
 			p = pp
 
 			if port == "" && candidates > 1 {
-				multiplePortsNotExplicit++
-
 				level.Warn(logger).Log(
 					"msg", "multiple ports, scrape port should be set with prometheus_scrape_port",
 					"target-network", targetNetworkName,
 					"containerID", c.ID,
-					"containerName", c.Names[0])
+					"containerName", name)
+				multiplePortsNotExplicit++
+				summary.MultiplePortsNotExplicit = true
 			}
 		}
 
@@ -244,18 +263,20 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 
 		addr := net.JoinHostPort(n.IPAddress, port)
 		labels[model.AddressLabel] = addr
-		labels[model.InstanceLabel] = instancePrefix + c.Names[0] + ":" + port
+		labels[model.InstanceLabel] = instancePrefix + name + ":" + port
 
 		exports = append(exports, Export{
 			Targets: []string{addr},
 			Labels:  labels})
+
+		summaries = append(summaries, summary)
 	}
 
 	metric_count.WithLabelValues().Set(float64(len(containers)))
 	metric_ignored_containers_not_in_network.WithLabelValues(targetNetworkName).Set(float64(notInNetwork))
 	metric_ignored_no_ports.WithLabelValues(targetNetworkName).Set(float64(noPorts))
 	metric_multiple_ports.WithLabelValues(targetNetworkName).Set(float64(multiplePortsNotExplicit))
-	return exports
+	return exports, summaries
 }
 
 func matchScrapePort(xs []types.Port, scrapePort string) (types.Port, bool) {

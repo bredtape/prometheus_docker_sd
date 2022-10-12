@@ -123,7 +123,7 @@ func main() {
 			t = time.After(config.RefreshInterval)
 
 			_ = level.Debug(logger).Log("msg", "refresh")
-			xs, err := d.Refresh(ctx)
+			xs, _, err := d.Refresh(ctx)
 			if err != nil {
 				metric_errors.WithLabelValues().Inc()
 				_ = level.Error(logger).Log("msg", "failed to refresh containers", "error", err)

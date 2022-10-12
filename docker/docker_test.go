@@ -30,7 +30,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				Networks: map[string]*network.EndpointSettings{
 					targetNetwork: {IPAddress: "ip1"}}}}
 
-		xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+		xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 		Convey("should have 1 entry", func() {
 			So(xs, ShouldHaveLength, 1)
@@ -73,7 +73,8 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("2001", func() {
 				c.Labels[scrapePort] = "2001"
 
-				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
+				xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				x := xs[0]
 
 				Convey("should have target with port 2001", func() {
 					So(x.Targets, ShouldResemble, []string{"ip1:2001"})
@@ -94,7 +95,8 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("5s", func() {
 				c.Labels[scrapeInterval] = "5s"
 
-				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
+				xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				x := xs[0]
 
 				Convey("should have label "+model.ScrapeIntervalLabel, func() {
 					So(x.Labels, ShouldContainKey, model.ScrapeIntervalLabel)
@@ -111,7 +113,8 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("10s", func() {
 				c.Labels[scrapeTimeout] = "10s"
 
-				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
+				xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				x := xs[0]
 
 				Convey("should have label "+model.ScrapeTimeoutLabel, func() {
 					So(x.Labels, ShouldContainKey, model.ScrapeTimeoutLabel)
@@ -128,7 +131,8 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("10s", func() {
 				c.Labels[scrapePath] = "/stuff/metrics"
 
-				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
+				xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				x := xs[0]
 
 				Convey("should have label "+model.MetricsPathLabel, func() {
 					So(x.Labels, ShouldContainKey, model.MetricsPathLabel)
@@ -145,7 +149,8 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with label "+key+"and value 'val1'", func() {
 			c.Labels[key] = "val1"
 
-			x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
+			xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			x := xs[0]
 
 			Convey("should have label key1", func() {
 				So(x.Labels, ShouldContainKey, "key1")
@@ -161,7 +166,8 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with label "+key+"and value 'val1'", func() {
 			c.Labels[key] = "val1"
 
-			x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
+			xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			x := xs[0]
 
 			Convey("should have sanitized label key _5b", func() {
 				So(x.Labels, ShouldContainKey, "_5b")
@@ -176,12 +182,12 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with extra port", func() {
 			Convey("2002, should still have target on 2000", func() {
 				c.Ports = append(c.Ports, types.Port{PrivatePort: 2002, Type: "tcp"})
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 				Convey("should have 1 entry", func() {
 					So(xs, ShouldHaveLength, 1)
-
 					x := xs[0]
+
 					Convey("with single target ip1:2000, picking the lowest port", func() {
 						So(x.Targets, ShouldResemble, []string{"ip1:2000"})
 					})
@@ -194,7 +200,7 @@ func TestExtractSingleContainer(t *testing.T) {
 
 			Convey("1000, should change target port", func() {
 				c.Ports = append(c.Ports, types.Port{PrivatePort: 1000, Type: "tcp"})
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 				Convey("should have 1 entry", func() {
 					So(xs, ShouldHaveLength, 1)
@@ -212,7 +218,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				Convey("with label "+scrapePort, func() {
 					c.Labels[scrapePort] = "1998"
 
-					xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+					xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 					Convey("should have 1 entry", func() {
 						So(xs, ShouldHaveLength, 1)
@@ -233,7 +239,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with duplicate port", func() {
 			c.Ports = append(c.Ports, types.Port{PrivatePort: 2000, Type: "tcp"})
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have 1 entry", func() {
 				So(xs, ShouldHaveLength, 1)
@@ -254,7 +260,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				Networks: map[string]*network.EndpointSettings{
 					"other": {IPAddress: "ip1"}}}
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have no entries", func() {
 				So(xs, ShouldBeEmpty)
@@ -268,7 +274,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("no ports", func() {
 			c.Ports = nil
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have no entries", func() {
 				So(xs, ShouldBeEmpty)
@@ -282,7 +288,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("not a tcp port", func() {
 			c.Ports[0].Type = "udp"
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs, _ := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have no entries", func() {
 				So(xs, ShouldBeEmpty)
