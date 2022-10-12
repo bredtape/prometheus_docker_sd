@@ -52,7 +52,6 @@ services:
     labels:
       prometheus_job: job_app
       prometheus_key1: val1
-      prometheus_scrape_port: 2001
       prometheus_scrape_interval: 14s
       prometheus_scrape_timeout: 7s
     restart: always
