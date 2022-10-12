@@ -27,7 +27,7 @@ var (
 )
 
 const (
-	envPrefix = "promethes_docker_sd"
+	envPrefix = "prometheus_docker_sd"
 )
 
 func parseArgs() *docker.Config {
