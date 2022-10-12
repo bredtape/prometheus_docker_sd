@@ -47,7 +47,7 @@ func parseArgs() *docker.Config {
 	fs.DurationVar(&refreshInterval, "refresh-interval", 60*time.Second, "Refresh interval to query the Docker host for containers")
 	fs.StringVar(&httpAddress, "http-address", ":9200", "http address to serve metrics on")
 	var logLevel string
-	fs.StringVar(&logLevel, "log-level", "DEBUG", "Specify log level (DEBUG, INFO, WARN, ERROR)")
+	fs.StringVar(&logLevel, "log-level", "INFO", "Specify log level (DEBUG, INFO, WARN, ERROR)")
 
 	var help bool
 	fs.BoolVar(&help, "help", false, "Display help")
