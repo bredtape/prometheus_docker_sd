@@ -46,15 +46,14 @@ const (
 	dockerLabelPortPublic           = dockerLabelPortPrefix + "public"
 	dockerLabelPortPublicIP         = dockerLabelPortPrefix + "public_ip"
 	userAgent                       = "github.com/bredtape/prometheus_docker_sd"
-
-	ExtractLabelPrefix  = "prometheus_"
-	JobLabelPrefix      = ExtractLabelPrefix + "job"
-	ExtractScrapePrefix = "prometheus_scrape_"
-	ScrapePort          = ExtractScrapePrefix + "port"
-	ScrapeInterval      = ExtractScrapePrefix + "interval"
-	ScrapeTimeout       = ExtractScrapePrefix + "timeout"
-	ScrapePath          = ExtractScrapePrefix + "path"
-	ScrapeScheme        = ExtractScrapePrefix + "scheme"
+	extractLabelPrefix              = "prometheus_"
+	jobLabelPrefix                  = extractLabelPrefix + "job"
+	extractScrapePrefix             = "prometheus_scrape_"
+	scrapePort                      = extractScrapePrefix + "port"
+	scrapeInterval                  = extractScrapePrefix + "interval"
+	scrapeTimeout                   = extractScrapePrefix + "timeout"
+	scrapePath                      = extractScrapePrefix + "path"
+	scrapeScheme                    = extractScrapePrefix + "scheme"
 )
 
 type Export struct {
@@ -155,7 +154,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			continue
 		}
 
-		_, exists := c.Labels[JobLabelPrefix]
+		_, exists := c.Labels[jobLabelPrefix]
 		if !exists {
 			continue
 		}
@@ -165,25 +164,25 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			dockerLabelContainerName:        c.Names[0],
 			dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode}
 
-		var scrapePort string
+		var port string
 		for k, v := range c.Labels {
 			ln := strutil.SanitizeLabelName(k)
 
-			if strings.HasPrefix(ln, ExtractScrapePrefix) {
+			if strings.HasPrefix(ln, extractScrapePrefix) {
 				switch k {
-				case ScrapePort:
-					scrapePort = v
-				case ScrapeInterval:
+				case scrapePort:
+					port = v
+				case scrapeInterval:
 					labels[model.ScrapeIntervalLabel] = v
-				case ScrapeTimeout:
+				case scrapeTimeout:
 					labels[model.ScrapeTimeoutLabel] = v
-				case ScrapePath:
+				case scrapePath:
 					labels[model.MetricsPathLabel] = v
-				case ScrapeScheme:
+				case scrapeScheme:
 					labels[model.SchemeLabel] = v
 				}
-			} else if strings.HasPrefix(ln, ExtractLabelPrefix) {
-				labels[ln[len(ExtractLabelPrefix):]] = v
+			} else if strings.HasPrefix(ln, extractLabelPrefix) {
+				labels[ln[len(extractLabelPrefix):]] = v
 			} else {
 				labels[dockerLabelContainerLabelPrefix+ln] = v
 			}
@@ -196,7 +195,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 		}
 
 		// match scrape port, fallback to lowest if not defined/found
-		p, found := matchScrapePort(c.Ports, scrapePort)
+		p, found := matchScrapePort(c.Ports, port)
 		if !found {
 			pp, candidates, found := findLowestTCPPrivatePort(c.Ports)
 			if !found {
@@ -205,7 +204,7 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			}
 			p = pp
 
-			if scrapePort == "" && candidates > 1 {
+			if port == "" && candidates > 1 {
 				multiplePortsNotExplicit++
 			}
 		}
@@ -222,13 +221,13 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 			labels[k] = v
 		}
 
-		if scrapePort == "" {
-			scrapePort = strconv.FormatUint(uint64(p.PrivatePort), 10)
+		if port == "" {
+			port = strconv.FormatUint(uint64(p.PrivatePort), 10)
 		}
 
-		addr := net.JoinHostPort(n.IPAddress, scrapePort)
+		addr := net.JoinHostPort(n.IPAddress, port)
 		labels[model.AddressLabel] = addr
-		labels[model.InstanceLabel] = instancePrefix + c.Names[0] + ":" + scrapePort
+		labels[model.InstanceLabel] = instancePrefix + c.Names[0] + ":" + port
 
 		exports = append(exports, Export{
 			Targets: []string{addr},

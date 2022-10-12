@@ -69,9 +69,9 @@ func TestExtractSingleContainer(t *testing.T) {
 			})
 		})
 
-		Convey("with label "+ScrapePort, func() {
+		Convey("with label "+scrapePort, func() {
 			Convey("2001", func() {
-				c.Labels[ScrapePort] = "2001"
+				c.Labels[scrapePort] = "2001"
 
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
@@ -84,15 +84,15 @@ func TestExtractSingleContainer(t *testing.T) {
 					So(x.Labels[model.InstanceLabel], ShouldEqual, "host1/containerName:2001")
 				})
 
-				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+ExtractScrapePrefix, func() {
-					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+ExtractScrapePrefix)
+				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+extractScrapePrefix, func() {
+					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+extractScrapePrefix)
 				})
 			})
 		})
 
-		Convey("with label "+ScrapeInterval, func() {
+		Convey("with label "+scrapeInterval, func() {
 			Convey("5s", func() {
-				c.Labels[ScrapeInterval] = "5s"
+				c.Labels[scrapeInterval] = "5s"
 
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
@@ -101,15 +101,15 @@ func TestExtractSingleContainer(t *testing.T) {
 					So(x.Labels[model.ScrapeIntervalLabel], ShouldEqual, "5s")
 				})
 
-				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+ExtractScrapePrefix, func() {
-					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+ExtractScrapePrefix)
+				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+extractScrapePrefix, func() {
+					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+extractScrapePrefix)
 				})
 			})
 		})
 
-		Convey("with label "+ScrapeTimeout, func() {
+		Convey("with label "+scrapeTimeout, func() {
 			Convey("10s", func() {
-				c.Labels[ScrapeTimeout] = "10s"
+				c.Labels[scrapeTimeout] = "10s"
 
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
@@ -118,15 +118,15 @@ func TestExtractSingleContainer(t *testing.T) {
 					So(x.Labels[model.ScrapeTimeoutLabel], ShouldEqual, "10s")
 				})
 
-				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+ExtractScrapePrefix, func() {
-					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+ExtractScrapePrefix)
+				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+extractScrapePrefix, func() {
+					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+extractScrapePrefix)
 				})
 			})
 		})
 
-		Convey("with label "+ScrapePath, func() {
+		Convey("with label "+scrapePath, func() {
 			Convey("10s", func() {
-				c.Labels[ScrapePath] = "/stuff/metrics"
+				c.Labels[scrapePath] = "/stuff/metrics"
 
 				x := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)[0]
 
@@ -135,8 +135,8 @@ func TestExtractSingleContainer(t *testing.T) {
 					So(x.Labels[model.MetricsPathLabel], ShouldEqual, "/stuff/metrics")
 				})
 
-				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+ExtractScrapePrefix, func() {
-					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+ExtractScrapePrefix)
+				Convey("should not have any labels with prefix "+dockerLabelContainerLabelPrefix+extractScrapePrefix, func() {
+					So(x.Labels, ShouldNotHaveKeyWithPrefix, dockerLabelContainerLabelPrefix+extractScrapePrefix)
 				})
 			})
 		})
@@ -209,8 +209,8 @@ func TestExtractSingleContainer(t *testing.T) {
 					So(testutil.ToFloat64(metric_multiple_ports.WithLabelValues(targetNetwork)), ShouldEqual, 1)
 				})
 
-				Convey("with label "+ScrapePort, func() {
-					c.Labels[ScrapePort] = "1998"
+				Convey("with label "+scrapePort, func() {
+					c.Labels[scrapePort] = "1998"
 
 					xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
