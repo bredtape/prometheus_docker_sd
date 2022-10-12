@@ -27,6 +27,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -190,6 +191,11 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 
 		n, found := c.NetworkSettings.Networks[targetNetworkName]
 		if !found {
+			level.Warn(logger).Log(
+				"msg", "not in target network",
+				"target-network", targetNetworkName,
+				"containerID", c.ID,
+				"containerName", c.Names[0])
 			notInNetwork++
 			continue
 		}
@@ -199,6 +205,11 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 		if !found {
 			pp, candidates, found := findLowestTCPPrivatePort(c.Ports)
 			if !found {
+				level.Warn(logger).Log(
+					"msg", "no ports found",
+					"target-network", targetNetworkName,
+					"containerID", c.ID,
+					"containerName", c.Names[0])
 				noPorts++
 				continue
 			}
@@ -206,6 +217,12 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 
 			if port == "" && candidates > 1 {
 				multiplePortsNotExplicit++
+
+				level.Warn(logger).Log(
+					"msg", "multiple ports, scrape port should be set with prometheus_scrape_port",
+					"target-network", targetNetworkName,
+					"containerID", c.ID,
+					"containerName", c.Names[0])
 			}
 		}
 
