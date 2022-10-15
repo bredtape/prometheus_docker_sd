@@ -74,7 +74,7 @@ func parseArgs() (*docker.Config, log.Logger) {
 		externalUrl = "http://" + instancePrefix + ":9200"
 	}
 
-	logger = log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewLogfmtLogger(os.Stdout)
 	logger = level.NewFilter(logger, level.Allow(lvl))
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 
