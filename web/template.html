@@ -13,7 +13,10 @@
   <body>
     <h1>Containers</h1>
     <div>
-      <span>{{ .WithJob }}/{{ .Total }} containers with 'prometheus_job'</span>
+      <span
+        >{{ .WithJob }} of total {{ .Total }} containers found with
+        'prometheus_job' label</span
+      >
     </div>
     <div>
       <span class="text-capitalize badge badge-success">{{ .OKs }} OK</span>
