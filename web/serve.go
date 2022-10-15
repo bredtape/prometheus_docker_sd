@@ -13,6 +13,9 @@ func Serve(addr string, metas <-chan []docker.Meta) {
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/containers", StartHandler(metas))
 	mux.Handle("/static/", cacheForever(http.StripPrefix("/static", http.FileServer(http.Dir("./web/static")))))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/containers", http.StatusSeeOther)
+	})
 	http.ListenAndServe(addr, mux)
 }
 
