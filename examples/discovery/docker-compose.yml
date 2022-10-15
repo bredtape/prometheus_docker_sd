@@ -16,8 +16,8 @@ services:
   prometheus:
     image: prom/prometheus:v2.39.0
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
     volumes:
       - ./prometheus/:/etc/prometheus/
       - prometheus_data:/prometheus
