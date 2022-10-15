@@ -33,34 +33,74 @@ services:
   discover:
     build: ../..
     command:
-      - --instance-prefix=this_server
+      - --instance-prefix=localhost
       - --output-file=/sd_data/docker_sd.yml
       - --refresh-interval=5s
+      - --log-level=DEBUG
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - sd_data:/sd_data
+      - ../../web/:/app/web/:ro
     networks:
       - metrics-net
+    ports:
+      - 9200:9200
     restart: always
     labels:
       prometheus_job: docker_sd
 
-  app1:
+  app_simple:
     build: ../app1
     environment:
       PORT: 2000
     labels:
       prometheus_job: job_app
-      prometheus_key1: val1
-      prometheus_scrape_interval: 14s
-      prometheus_scrape_timeout: 7s
+      prometheus_coffee_roast: light
     restart: always
     expose:
       - 2000
     networks:
       - metrics-net
 
-  app2:
+  app_no_job:
+    build: ../app1
+    restart: always
+    networks:
+      - metrics-net
+
+  app_no_network:
+    build: ../app1
+    environment:
+      PORT: 2000
+    labels:
+      prometheus_job: job_app
+    restart: always
+    expose:
+      - 2000
+
+  app_no_ports:
+    build: ../app1
+    labels:
+      prometheus_job: job_app
+    restart: always
+    networks:
+      - metrics-net
+
+  app_not_explicit:
+    build: ../app1
+    environment:
+      PORT: 2500
+    labels:
+      prometheus_job: job_app
+    restart: always
+    expose:
+      - 2000
+      - 2500
+      - 3000
+    networks:
+      - metrics-net
+
+  app_explicit:
     build: ../app1
     environment:
       PORT: 2500

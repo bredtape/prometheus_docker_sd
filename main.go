@@ -4,46 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/bredtape/prometheus_docker_sd/docker"
+	"github.com/bredtape/prometheus_docker_sd/web"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/namsral/flag"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/yaml.v3"
 )
 
 var (
-	outputFile  string
-	httpAddress string
+	outputFile, httpAddress, externalUrl string
 
 	logger log.Logger
-
-	metric_attempts = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: docker.APP,
-		Name:      "discovery_attempts_total",
-		Help:      "Number of attempts to discover containers and write result"}, nil)
-
-	metric_errors = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: docker.APP,
-		Name:      "discovery_attempts_errors_total",
-		Help:      "Number of attempts to discover containers and write result, that resulted in some error"}, nil)
 )
 
 func parseArgs() (*docker.Config, log.Logger) {
-	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(docker.APP), flag.ExitOnError)
+	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(APP), flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s <options>\n", os.Args[0])
 		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps and replace any - with _\n", strings.ToUpper(docker.APP))
+		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps and replace any - with _\n", strings.ToUpper(APP))
 	}
 
 	var dockerHost, instancePrefix, targetNetworkName string
@@ -54,6 +40,7 @@ func parseArgs() (*docker.Config, log.Logger) {
 	fs.StringVar(&instancePrefix, "instance-prefix", "", "Prefix added to Container name to form the 'instance' label. Required")
 	fs.DurationVar(&refreshInterval, "refresh-interval", 60*time.Second, "Refresh interval to query the Docker host for containers")
 	fs.StringVar(&httpAddress, "http-address", ":9200", "http address to serve metrics on")
+	fs.StringVar(&externalUrl, "external-url", "", "External URL of this service, defaults to http://<instance-prefix>:9200. Added to metrics, so an alert can redirect a user to the /containers page")
 	var logLevel string
 	fs.StringVar(&logLevel, "log-level", "INFO", "Specify log level (DEBUG, INFO, WARN, ERROR)")
 
@@ -83,6 +70,10 @@ func parseArgs() (*docker.Config, log.Logger) {
 		bail(fs, "'log-level' invalid: %v", err)
 	}
 
+	if externalUrl == "" {
+		externalUrl = "http://" + instancePrefix + ":9200"
+	}
+
 	logger = log.NewLogfmtLogger(os.Stderr)
 	logger = level.NewFilter(logger, level.Allow(lvl))
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
@@ -99,7 +90,8 @@ func main() {
 	config, logger := parseArgs()
 
 	_ = level.Info(logger).Log("msg", "starting http handler", "address", httpAddress)
-	go http.ListenAndServe(httpAddress, promhttp.Handler())
+	updates := make(chan []docker.Meta, 1)
+	go web.Serve(httpAddress, updates)
 
 	d, err := docker.New(config, logger)
 	if err != nil {
@@ -108,8 +100,8 @@ func main() {
 	}
 
 	// init metrics
-	metric_attempts.WithLabelValues()
-	metric_errors.WithLabelValues()
+	mAttempts := metric_attempts.WithLabelValues(externalUrl, config.TargetNetwork)
+	mErrors := metric_errors.WithLabelValues(externalUrl, config.TargetNetwork)
 
 	t := time.After(0)
 	for {
@@ -117,29 +109,38 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-t:
-			metric_attempts.WithLabelValues().Inc()
+			mAttempts.Inc()
 
 			// refresh timer
 			t = time.After(config.RefreshInterval)
 
-			_ = level.Debug(logger).Log("msg", "refresh")
-			xs, _, err := d.Refresh(ctx)
+			_ = level.Debug(logger).Log("msg", "begin refresh")
+			xs, err := d.Refresh(ctx)
 			if err != nil {
-				metric_errors.WithLabelValues().Inc()
+				mErrors.Inc()
 				_ = level.Error(logger).Log("msg", "failed to refresh containers", "error", err)
 				continue
 			}
 
-			err = writeResultsToFile(outputFile, xs)
+			err = writeResultsToFile(outputFile, convert(xs))
 			if err != nil {
-				metric_errors.WithLabelValues().Inc()
+				mErrors.Inc()
 				_ = level.Error(logger).Log("msg", "failed to write results", "error", err)
+				continue
 			}
+			updateMetrics(externalUrl, config.TargetNetwork, xs)
+			updates <- xs
+			_ = level.Debug(logger).Log("msg", "done refresh")
 		}
 	}
 }
 
-func writeResultsToFile(outputFile string, xs []docker.Export) error {
+type Export struct {
+	Targets []string          `yaml:"targets"`
+	Labels  map[string]string `yaml:"labels"`
+}
+
+func writeResultsToFile(outputFile string, xs []Export) error {
 	switch filepath.Ext(strings.ToLower(outputFile)) {
 	case ".yml", ".yaml":
 		data, err := yaml.Marshal(xs)
@@ -156,6 +157,19 @@ func writeResultsToFile(outputFile string, xs []docker.Export) error {
 	default:
 		return fmt.Errorf("unsupported file extension in output-file: %s", outputFile)
 	}
+}
+
+func convert(xs []docker.Meta) []Export {
+	ys := make([]Export, 0)
+	for _, x := range xs {
+		if !x.IsExported() {
+			continue
+		}
+		ys = append(ys, Export{
+			Targets: []string{x.Address},
+			Labels:  x.Labels})
+	}
+	return ys
 }
 
 func bail(fs *flag.FlagSet, format string, args ...interface{}) {

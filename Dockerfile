@@ -17,6 +17,7 @@ FROM scratch
 WORKDIR /app
 
 COPY --from=0 /app/main /app/main
+COPY --from=0 /app/web/*.html /app/web/
 
 EXPOSE 9200
 
