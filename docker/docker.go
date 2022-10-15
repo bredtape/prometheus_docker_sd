@@ -92,7 +92,6 @@ type Discovery struct {
 	targetNetwork  string
 }
 
-// New returns a new DockerDiscovery which periodically refreshes its targets.
 func New(conf *Config, logger log.Logger) (*Discovery, error) {
 	var err error
 

@@ -35,12 +35,12 @@ func parseArgs() (*docker.Config, log.Logger) {
 	var dockerHost, instancePrefix, targetNetworkName string
 	var refreshInterval time.Duration
 	fs.StringVar(&outputFile, "output-file", "docker_sd.yml", "Output .json, .yml or .yaml file with format as specified in https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config")
-	fs.StringVar(&dockerHost, "docker-host", "unix:///var/run/docker.sock", "Docker host url")
+	fs.StringVar(&dockerHost, "docker-host", "unix:///var/run/docker.sock", "Docker host URL. Only socket have been tested.")
 	fs.StringVar(&targetNetworkName, "target-network-name", "metrics-net", "Network that the containers must be a member of to be considered. Consider making it 'external' in the docker-compose...")
 	fs.StringVar(&instancePrefix, "instance-prefix", "", "Prefix added to Container name to form the 'instance' label. Required")
 	fs.DurationVar(&refreshInterval, "refresh-interval", 60*time.Second, "Refresh interval to query the Docker host for containers")
 	fs.StringVar(&httpAddress, "http-address", ":9200", "http address to serve metrics on")
-	fs.StringVar(&externalUrl, "external-url", "", "External URL of this service, defaults to http://<instance-prefix>:9200. Added to metrics, so an alert can redirect a user to the /containers page")
+	fs.StringVar(&externalUrl, "external-url", "", "External URL of this service, defaults to http://<instance-prefix>:9200. Added to metrics label, so an alert can redirect a user to the /containers page")
 	var logLevel string
 	fs.StringVar(&logLevel, "log-level", "INFO", "Specify log level (DEBUG, INFO, WARN, ERROR)")
 

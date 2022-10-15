@@ -12,12 +12,11 @@ The trouble with docker_sd_configs is when a container have multiple exposed por
 
 See examples/discovery for a working example.
 
-2 arguments must be specified:
+For a container to be exported:
 
-- target-network-name: The Network that the containers must be member of to be considered. Defaults to metrics-net.
-- instance-prefix: Prefix added to the output labels as \<instance-prefix\>/\<container-name\>:\<port\>.
-
-To be scraped a container must be in the configured 'target-network' (command line arg) and have a label 'prometheus_job'.
+- add container label 'prometheus_job' with the job name you want as value.
+- the container must be in the configured target network (defaults to 'metrics-net').
+- the container must have at least 1 expose port. Public ports are ignored. This may already be set in the Docker image.
 
 | Container label            | Description                                                                                  |
 | -------------------------- | -------------------------------------------------------------------------------------------- |
