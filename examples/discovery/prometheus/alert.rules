@@ -5,7 +5,7 @@ groups:
     expr: prometheus_docker_sd_containers_not_in_target_network_count > 0
     for: 1m
     labels:
-      severity: errors
+      severity: error
     annotations:
       summary: "{{ $value }} containers have the 'prometheus_job' label set, but are not in the target network"
       dashboard: "{{ $labels.external_url }}/containers"
@@ -14,7 +14,7 @@ groups:
     expr: prometheus_docker_sd_containers_no_exposed_ports_count > 0
     for: 1m
     labels:
-      severity: errors
+      severity: error
     annotations:
       summary: "{{ $value }} containers have the 'prometheus_job' label set, but have no exposed TCP ports"
       dashboard: "{{ $labels.external_url }}/containers"
