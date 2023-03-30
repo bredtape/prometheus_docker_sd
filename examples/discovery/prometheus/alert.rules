@@ -1,4 +1,12 @@
-groups:
+groups: 
+- name: prometheus
+  rules:
+  - alert: monitor_down
+    expr: up==0
+    for: 15s
+    annotations:
+      summary: "Service {{ $labels.instance }} down"
+
 - name: docker_sd
   rules:
   - alert: prometheus_docker_sd_containers_not_in_target_network

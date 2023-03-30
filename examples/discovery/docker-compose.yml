@@ -113,3 +113,19 @@ services:
       - 3000
     networks:
       - metrics-net
+
+
+  app_failure:
+    build: ../app1
+    environment:
+      PORT: xyz
+    labels:
+      prometheus_job: job_app
+      prometheus_scrape_port: 2000
+    restart: always
+    networks:
+      - metrics-net
+    # define expose port, otherwise when the container is down you will not get a 'monitor down' alert, 
+    # but 'prometheus_docker_sd_containers_no_exposed_ports'
+    expose:
+       - 2000
