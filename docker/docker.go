@@ -246,13 +246,14 @@ func extract(logger log.Logger, instancePrefix string, targetNetworkName string,
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		if !result[i].IsExported() && result[j].IsExported() {
+		x, y := result[i], result[j]
+		if !x.IsExported() && y.IsExported() {
 			return true
 		}
-		if result[i].IsExported() && !result[j].IsExported() {
+		if x.IsExported() && !y.IsExported() {
 			return false
 		}
-		return result[i].Name < result[j].Name
+		return x.Name < y.Name
 	})
 
 	return result
