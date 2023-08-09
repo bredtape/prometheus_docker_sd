@@ -1,6 +1,6 @@
 module github.com/bredtape/prometheus_docker_sd
 
-go 1.19
+go 1.20
 
 require (
 	github.com/docker/docker v23.0.2+incompatible
