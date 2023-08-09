@@ -2,8 +2,6 @@ version: '3'
 
 volumes:
   prometheus_data:
-  sd_data:
-
 
 networks:
   metrics-net:
@@ -21,7 +19,7 @@ services:
     volumes:
       - ./prometheus/:/etc/prometheus/
       - prometheus_data:/prometheus
-      - sd_data:/sd_data:ro
+      - ./sd_data/:/sd_data/:ro
     ports:
       - 9090:9090
     restart: always
@@ -39,7 +37,7 @@ services:
       - --log-level=DEBUG
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - sd_data:/sd_data
+      - ./sd_data/:/sd_data/
     networks:
       - metrics-net
     ports:
@@ -125,7 +123,7 @@ services:
     restart: always
     networks:
       - metrics-net
-    # define expose port, otherwise when the container is down you will not get a 'monitor down' alert, 
+    # define expose port, otherwise when the container is down you will not get a 'monitor down' alert,
     # but 'prometheus_docker_sd_containers_no_exposed_ports'
     expose:
        - 2000
