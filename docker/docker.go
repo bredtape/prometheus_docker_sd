@@ -55,6 +55,7 @@ const (
 	scrapeTimeout                   = extractScrapePrefix + "timeout"
 	scrapePath                      = extractScrapePrefix + "path"
 	scrapeScheme                    = extractScrapePrefix + "scheme"
+	fakeIP                          = "1.1.1.1"
 )
 
 type Meta struct {
@@ -214,6 +215,20 @@ func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName st
 
 		meta.IsInTargetNetwork = true
 
+		// no ports, but scrape port explicitly defined
+		if len(c.Ports) == 0 && port != "" {
+			p, _ := strconv.Atoi(port)
+			c.Ports = append(c.Ports, types.Port{Type: "tcp", PrivatePort: uint16(p)})
+			if n.IPAddress == "" {
+				// insert fake IP to not have Prometheus validation fail, but the actual scrape
+				// this happens when a container continous to restart
+				n.IPAddress = fakeIP
+				log.Info("no ports found or private IP address found, but explicit port specified. Will use explicit port and fake IP", "port", port, "ip", n.IPAddress)
+			}
+		}
+
+		meta.Labels[dockerLabelNetworkIP] = n.IPAddress
+
 		// match scrape port, fallback to lowest if not defined/found
 		p, found := matchScrapePort(c.Ports, port)
 		if found {
@@ -232,8 +247,6 @@ func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName st
 			}
 		}
 		meta.HasTCPPorts = true
-
-		meta.Labels[dockerLabelNetworkIP] = n.IPAddress
 		meta.Labels[dockerLabelPortPrivate] = strconv.FormatUint(uint64(p.PrivatePort), 10)
 
 		if p.PublicPort > 0 {
