@@ -1,6 +1,6 @@
 module github.com/bredtape/prometheus_docker_sd/examples/app1
 
-go 1.20
+go 1.21
 
 require (
 	github.com/prometheus/client_golang v1.16.0
