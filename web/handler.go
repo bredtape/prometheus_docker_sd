@@ -39,7 +39,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.rw.Lock()
 	defer h.rw.Unlock()
 
-	t, err := template.New("").ParseFS(templates, "template.html")
+	t, err := template.ParseFS(templates, "template.html")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(w, "failed to parse template: %v", err)
