@@ -154,7 +154,7 @@ func (d *Discovery) Refresh(ctx context.Context) ([]Meta, error) {
 	return extract(d.log, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
 }
 
-func extract(log *slog.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Meta {
+func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Meta {
 
 	result := make([]Meta, 0)
 
@@ -162,6 +162,10 @@ func extract(log *slog.Logger, instancePrefix string, targetNetworkName string, 
 		if len(c.Names) == 0 {
 			continue
 		}
+
+		log := parentLog.With(
+			"container", c.ID,
+			"name", c.Names[0])
 
 		meta := Meta{
 			Name: c.Names[0],
@@ -200,9 +204,13 @@ func extract(log *slog.Logger, instancePrefix string, targetNetworkName string, 
 
 		n, found := c.NetworkSettings.Networks[targetNetworkName]
 		if !found {
+			log.Debug("network not found and no explicit scrape port",
+				"targetNetwork", targetNetworkName,
+				"networks", c.NetworkSettings.Networks)
 			result = append(result, meta)
 			continue
 		}
+		log = log.With("networkIP", n.IPAddress)
 
 		meta.IsInTargetNetwork = true
 
@@ -214,6 +222,7 @@ func extract(log *slog.Logger, instancePrefix string, targetNetworkName string, 
 			pp, candidates, found := findLowestTCPPrivatePort(c.Ports)
 			if !found {
 				result = append(result, meta)
+				log.Debug("no TCP ports found", "ports", c.Ports)
 				continue
 			}
 			p = pp
