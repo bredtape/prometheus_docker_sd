@@ -1,15 +1,18 @@
 package web
 
 import (
+	"embed"
 	"fmt"
 	"html/template"
 	"net/http"
-	"os"
 	"sort"
 	"sync"
 
 	"github.com/bredtape/prometheus_docker_sd/docker"
 )
+
+//go:embed *.html
+var templates embed.FS
 
 type handler struct {
 	rw      sync.Mutex
@@ -36,14 +39,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.rw.Lock()
 	defer h.rw.Unlock()
 
-	data, err := os.ReadFile("web/template.html")
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "failed to read template file: %v", err)
-		return
-	}
-
-	t, err := template.New("").Parse(string(data))
+	t, err := template.New("").ParseFS(templates, "template.html")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(w, "failed to parse template: %v", err)
