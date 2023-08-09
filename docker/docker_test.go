@@ -2,13 +2,12 @@ package docker
 
 import (
 	"fmt"
-	"os"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/network"
-	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -16,7 +15,8 @@ import (
 func TestExtractSingleContainer(t *testing.T) {
 	instancePrefix := "host1"
 	targetNetwork := "metrics-net"
-	logger := log.NewJSONLogger(os.Stdout)
+
+	log := slog.Default()
 
 	Convey("given container with prometheus_job label, in target network and with 1 exposed port", t, func() {
 		c := types.Container{
@@ -29,7 +29,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				Networks: map[string]*network.EndpointSettings{
 					targetNetwork: {IPAddress: "ip1"}}}}
 
-		xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+		xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 		Convey("should have 1 entry", func() {
 			So(xs, ShouldHaveLength, 1)
@@ -72,7 +72,7 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("2001", func() {
 				c.Labels[scrapePort] = "2001"
 
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 				x := xs[0]
 
 				Convey("should have target with port 2001", func() {
@@ -94,7 +94,7 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("5s", func() {
 				c.Labels[scrapeInterval] = "5s"
 
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 				x := xs[0]
 
 				Convey("should have label "+model.ScrapeIntervalLabel, func() {
@@ -112,7 +112,7 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("10s", func() {
 				c.Labels[scrapeTimeout] = "10s"
 
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 				x := xs[0]
 
 				Convey("should have label "+model.ScrapeTimeoutLabel, func() {
@@ -130,7 +130,7 @@ func TestExtractSingleContainer(t *testing.T) {
 			Convey("10s", func() {
 				c.Labels[scrapePath] = "/stuff/metrics"
 
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 				x := xs[0]
 
 				Convey("should have label "+model.MetricsPathLabel, func() {
@@ -148,7 +148,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with label "+key+"and value 'val1'", func() {
 			c.Labels[key] = "val1"
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 			x := xs[0]
 
 			Convey("should have label key1", func() {
@@ -165,7 +165,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with label "+key+"and value 'val1'", func() {
 			c.Labels[key] = "val1"
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 			x := xs[0]
 
 			Convey("should have sanitized label key _5b", func() {
@@ -181,7 +181,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with extra port", func() {
 			Convey("2002, should still have target on 2000", func() {
 				c.Ports = append(c.Ports, types.Port{PrivatePort: 2002, Type: "tcp"})
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 				Convey("should have 1 entry", func() {
 					So(xs, ShouldHaveLength, 1)
@@ -199,7 +199,7 @@ func TestExtractSingleContainer(t *testing.T) {
 
 			Convey("1000, should change target port", func() {
 				c.Ports = append(c.Ports, types.Port{PrivatePort: 1000, Type: "tcp"})
-				xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+				xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 				Convey("should have 1 entry", func() {
 					So(xs, ShouldHaveLength, 1)
@@ -217,7 +217,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				Convey("with label "+scrapePort, func() {
 					c.Labels[scrapePort] = "1998"
 
-					xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+					xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 					Convey("should have 1 entry", func() {
 						So(xs, ShouldHaveLength, 1)
@@ -238,7 +238,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("with duplicate port", func() {
 			c.Ports = append(c.Ports, types.Port{PrivatePort: 2000, Type: "tcp"})
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have 1 entry", func() {
 				So(xs, ShouldHaveLength, 1)
@@ -259,7 +259,7 @@ func TestExtractSingleContainer(t *testing.T) {
 				Networks: map[string]*network.EndpointSettings{
 					"other": {IPAddress: "ip1"}}}
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have 1 entry", func() {
 				So(xs, ShouldHaveLength, 1)
@@ -275,7 +275,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("no ports", func() {
 			c.Ports = nil
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have 1 entry", func() {
 				So(xs, ShouldHaveLength, 1)
@@ -291,7 +291,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("not a tcp port", func() {
 			c.Ports[0].Type = "udp"
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have 1 entry", func() {
 				So(xs, ShouldHaveLength, 1)
@@ -307,7 +307,7 @@ func TestExtractSingleContainer(t *testing.T) {
 		Convey("no "+jobLabelPrefix, func() {
 			delete(c.Labels, jobLabelPrefix)
 
-			xs := extract(logger, instancePrefix, targetNetwork, []types.Container{c}, nil)
+			xs := extract(log, instancePrefix, targetNetwork, []types.Container{c}, nil)
 
 			Convey("should have 1 entry", func() {
 				So(xs, ShouldHaveLength, 1)

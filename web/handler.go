@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"sort"
 	"sync"
@@ -46,7 +47,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = t.Execute(w, h.view)
+	err = t.Execute(w, h.view)
+	if err != nil {
+		slog.Error("failed to execute template: %v", err)
+	}
 }
 
 type View struct {

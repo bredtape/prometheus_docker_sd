@@ -16,6 +16,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -27,7 +28,6 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
-	"github.com/go-kit/log"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -87,18 +87,20 @@ type Config struct {
 
 type Discovery struct {
 	client         *client.Client
-	logger         log.Logger
 	instancePrefix string
 	targetNetwork  string
+	log            *slog.Logger
 }
 
-func New(conf *Config, logger log.Logger) (*Discovery, error) {
+func New(conf *Config) (*Discovery, error) {
 	var err error
 
 	d := &Discovery{
-		logger:         logger,
 		instancePrefix: conf.InstancePrefix,
-		targetNetwork:  conf.TargetNetwork}
+		targetNetwork:  conf.TargetNetwork,
+		log: slog.Default().With(
+			"targetNetwork", conf.TargetNetwork,
+			"instancePrefix", conf.InstancePrefix)}
 
 	hostURL, err := url.Parse(conf.Host)
 	if err != nil {
@@ -149,10 +151,10 @@ func (d *Discovery) Refresh(ctx context.Context) ([]Meta, error) {
 		return nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
 
-	return extract(d.logger, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
+	return extract(d.log, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
 }
 
-func extract(logger log.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Meta {
+func extract(log *slog.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Meta {
 
 	result := make([]Meta, 0)
 

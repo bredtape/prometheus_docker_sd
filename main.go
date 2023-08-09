@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,6 @@ import (
 
 	"github.com/bredtape/prometheus_docker_sd/docker"
 	"github.com/bredtape/prometheus_docker_sd/web"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/namsral/flag"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -20,11 +19,9 @@ import (
 
 var (
 	outputFile, httpAddress, externalUrl string
-
-	logger log.Logger
 )
 
-func parseArgs() (*docker.Config, log.Logger) {
+func parseArgs() *docker.Config {
 	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(APP), flag.ExitOnError)
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s <options>\n", os.Args[0])
@@ -65,37 +62,41 @@ func parseArgs() (*docker.Config, log.Logger) {
 		bail(fs, "'instance-prefix' required")
 	}
 
-	lvl, err := level.Parse(strings.ToLower(logLevel))
-	if err != nil {
-		bail(fs, "'log-level' invalid: %v", err)
+	level := map[string]slog.Level{
+		"debug": slog.LevelDebug,
+		"info":  slog.LevelInfo,
+		"warn":  slog.LevelWarn,
+		"error": slog.LevelError}[strings.ToLower(logLevel)]
+	if level.String() == "" {
+		bail(fs, "'log-level' invalid log level %s", logLevel)
 	}
+
+	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	slog.SetDefault(slog.New(h))
 
 	if externalUrl == "" {
 		externalUrl = "http://" + instancePrefix + ":9200"
 	}
 
-	logger = log.NewLogfmtLogger(os.Stdout)
-	logger = level.NewFilter(logger, level.Allow(lvl))
-	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
-
 	return &docker.Config{
 		Host:            dockerHost,
 		InstancePrefix:  instancePrefix,
 		TargetNetwork:   targetNetworkName,
-		RefreshInterval: refreshInterval}, logger
+		RefreshInterval: refreshInterval}
 }
 
 func main() {
 	ctx := context.Background()
-	config, logger := parseArgs()
+	config := parseArgs()
+	log := slog.Default()
 
-	_ = level.Info(logger).Log("msg", "starting http handler", "address", httpAddress)
 	updates := make(chan []docker.Meta, 1)
+	log.Info("starting http handler", "address", httpAddress)
 	go web.Serve(httpAddress, updates)
 
-	d, err := docker.New(config, logger)
+	d, err := docker.New(config)
 	if err != nil {
-		_ = level.Error(logger).Log("failed to configure discovery", err)
+		log.Error("failed to configure discovery", "error", err)
 		os.Exit(4)
 	}
 
@@ -104,6 +105,7 @@ func main() {
 	mErrors := metric_errors.WithLabelValues(externalUrl, config.TargetNetwork)
 
 	t := time.After(0)
+	log = log.With("context", "main")
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,23 +116,23 @@ func main() {
 			// refresh timer
 			t = time.After(config.RefreshInterval)
 
-			_ = level.Debug(logger).Log("msg", "begin refresh")
+			log.Info("begin refresh")
 			xs, err := d.Refresh(ctx)
 			if err != nil {
 				mErrors.Inc()
-				_ = level.Error(logger).Log("msg", "failed to refresh containers", "error", err)
+				log.Error("failed to refresh containers", "error", err)
 				continue
 			}
 
 			err = writeResultsToFile(outputFile, convert(xs))
 			if err != nil {
 				mErrors.Inc()
-				_ = level.Error(logger).Log("msg", "failed to write results", "error", err)
+				log.Error("failed to write results", "error", err)
 				continue
 			}
 			updateMetrics(externalUrl, config.TargetNetwork, xs)
 			updates <- xs
-			_ = level.Debug(logger).Log("msg", "done refresh")
+			log.Debug("done refresh")
 		}
 	}
 }
