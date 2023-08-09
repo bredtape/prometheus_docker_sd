@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -17,6 +17,6 @@ func main() {
 	}
 	http.Handle("/metrics", promhttp.Handler())
 
-	logrus.Infof("Serving at %s", adr)
+	slog.Info("Start serving http", "address", adr)
 	_ = http.ListenAndServe(adr, nil)
 }
