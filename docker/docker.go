@@ -38,6 +38,7 @@ const (
 	dockerLabelContainerPrefix      = dockerLabel + "container_"
 	dockerLabelContainerID          = dockerLabelContainerPrefix + "id"
 	dockerLabelContainerName        = dockerLabelContainerPrefix + "name"
+	dockerLabelContainerState       = dockerLabelContainerPrefix + "state"
 	dockerLabelContainerNetworkMode = dockerLabelContainerPrefix + "network_mode"
 	dockerLabelContainerLabelPrefix = dockerLabelContainerPrefix + "label_"
 	dockerLabelNetworkPrefix        = dockerLabel + "network_"
@@ -173,6 +174,7 @@ func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName st
 			Labels: map[string]string{
 				dockerLabelContainerID:          c.ID,
 				dockerLabelContainerName:        c.Names[0],
+				dockerLabelContainerState:       c.State,
 				dockerLabelContainerNetworkMode: c.HostConfig.NetworkMode}}
 
 		if _, exists := c.Labels[jobLabelPrefix]; exists {
