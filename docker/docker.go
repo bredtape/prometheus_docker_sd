@@ -143,7 +143,7 @@ func New(conf *Config) (*Discovery, error) {
 }
 
 func (d *Discovery) Refresh(ctx context.Context) ([]Meta, error) {
-	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{})
+	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{All: true, Latest: true})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing containers: %w", err)
 	}
