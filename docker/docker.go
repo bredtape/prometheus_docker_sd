@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -143,7 +144,7 @@ func New(conf *Config) (*Discovery, error) {
 }
 
 func (d *Discovery) Refresh(ctx context.Context) ([]Meta, error) {
-	containers, err := d.client.ContainerList(ctx, types.ContainerListOptions{All: true, Latest: true})
+	containers, err := d.client.ContainerList(ctx, container.ListOptions{All: true, Latest: true})
 	if err != nil {
 		return nil, fmt.Errorf("error while listing containers: %w", err)
 	}
