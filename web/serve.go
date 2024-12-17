@@ -3,10 +3,9 @@ package web
 import (
 	"net/http"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/bredtape/prometheus_docker_sd/docker"
 	"github.com/bredtape/prometheus_docker_sd/web/static"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func Serve(addr string, metas <-chan []docker.Meta) {

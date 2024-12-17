@@ -57,6 +57,7 @@ const (
 	scrapeTimeout                   = extractScrapePrefix + "timeout"
 	scrapePath                      = extractScrapePrefix + "path"
 	scrapeScheme                    = extractScrapePrefix + "scheme"
+	scrapeExternal                  = extractScrapePrefix + "external"
 	fakeIP                          = "1.1.1.1"
 )
 
@@ -69,6 +70,7 @@ type Meta struct {
 	IsInTargetNetwork bool
 	HasTCPPorts       bool // at least 1 TCP port
 	HasExplicitPort   bool // explicit or single port
+	ScrapeExternal    bool
 }
 
 // whether the Container is exported
@@ -79,8 +81,12 @@ func (m Meta) IsExported() bool {
 // Config is the configuration for Docker (non-swarm) based service discovery.
 type Config struct {
 	HTTPClientConfig config.HTTPClientConfig `yaml:",inline"`
-	Host             string                  `yaml:"host"`
-	RefreshInterval  time.Duration           `yaml:"refresh_interval"`
+	// docker host url, e.g. unix:///var/run/docker.sock
+	DockerHost      string        `yaml:"host"`
+	RefreshInterval time.Duration `yaml:"refresh_interval"`
+
+	// external host. To be used with targets that require external scraping
+	ExternalHost string
 
 	// prefix for instance. The Container name is appended
 	InstancePrefix string
@@ -91,6 +97,7 @@ type Config struct {
 type Discovery struct {
 	client         *client.Client
 	instancePrefix string
+	externalHost   string
 	targetNetwork  string
 	log            *slog.Logger
 }
@@ -101,17 +108,18 @@ func New(conf *Config) (*Discovery, error) {
 	d := &Discovery{
 		instancePrefix: conf.InstancePrefix,
 		targetNetwork:  conf.TargetNetwork,
+		externalHost:   conf.ExternalHost,
 		log: slog.Default().With(
 			"targetNetwork", conf.TargetNetwork,
 			"instancePrefix", conf.InstancePrefix)}
 
-	hostURL, err := url.Parse(conf.Host)
+	hostURL, err := url.Parse(conf.DockerHost)
 	if err != nil {
 		return nil, err
 	}
 
 	opts := []client.Opt{
-		client.WithHost(conf.Host),
+		client.WithHost(conf.DockerHost),
 		client.WithAPIVersionNegotiation(),
 	}
 
@@ -154,10 +162,10 @@ func (d *Discovery) Refresh(ctx context.Context) ([]Meta, error) {
 		return nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
 
-	return extract(d.log, d.instancePrefix, d.targetNetwork, containers, networkLabels), nil
+	return extract(d.log, d.instancePrefix, d.externalHost, d.targetNetwork, containers, networkLabels), nil
 }
 
-func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Meta {
+func extract(parentLog *slog.Logger, instancePrefix, externalHost, targetNetworkName string, containers []types.Container, networkLabels map[string]map[string]string) []Meta {
 
 	result := make([]Meta, 0)
 
@@ -198,6 +206,8 @@ func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName st
 					meta.Labels[model.MetricsPathLabel] = v
 				case scrapeScheme:
 					meta.Labels[model.SchemeLabel] = v
+				case scrapeExternal:
+					meta.ScrapeExternal = strings.ToLower(v) == "true"
 				}
 			} else if strings.HasPrefix(ln, extractLabelPrefix) {
 				meta.Labels[ln[len(extractLabelPrefix):]] = v
@@ -207,7 +217,7 @@ func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName st
 		}
 
 		n, found := c.NetworkSettings.Networks[targetNetworkName]
-		if !found {
+		if !meta.ScrapeExternal && !found {
 			log.Debug("network not found and no explicit scrape port",
 				"targetNetwork", targetNetworkName,
 				"networks", c.NetworkSettings.Networks)
@@ -265,7 +275,11 @@ func extract(parentLog *slog.Logger, instancePrefix string, targetNetworkName st
 			port = strconv.FormatUint(uint64(p.PrivatePort), 10)
 		}
 
-		meta.Address = net.JoinHostPort(n.IPAddress, port)
+		if meta.ScrapeExternal {
+			meta.Address = net.JoinHostPort(externalHost, port)
+		} else {
+			meta.Address = net.JoinHostPort(n.IPAddress, port)
+		}
 		meta.Labels[model.AddressLabel] = meta.Address
 		meta.Labels[model.InstanceLabel] = instancePrefix + meta.Name + ":" + port
 
