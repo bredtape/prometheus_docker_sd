@@ -9,8 +9,8 @@ require (
 	github.com/namsral/flag v1.7.4-pre
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
-	github.com/prometheus/common v0.61.0
-	github.com/prometheus/prometheus v0.301.0
+	github.com/prometheus/common v0.60.1
+	github.com/prometheus/prometheus v0.300.1
 	github.com/smartystreets/goconvey v1.7.2
 	gopkg.in/yaml.v3 v3.0.1
 )
