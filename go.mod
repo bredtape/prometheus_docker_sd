@@ -1,16 +1,16 @@
 module github.com/bredtape/prometheus_docker_sd
 
-go 1.22.0
+go 1.23
 
 toolchain go1.23.2
 
 require (
-	github.com/docker/docker v27.4.0+incompatible
+	github.com/docker/docker v27.5.0+incompatible
 	github.com/namsral/flag v1.7.4-pre
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/common v0.60.1
-	github.com/prometheus/prometheus v0.300.1
+	github.com/prometheus/prometheus v0.301.0
 	github.com/smartystreets/goconvey v1.7.2
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -45,11 +45,11 @@ require (
 	go.opentelemetry.io/otel v1.33.0 // indirect
 	go.opentelemetry.io/otel/metric v1.33.0 // indirect
 	go.opentelemetry.io/otel/trace v1.33.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
-	golang.org/x/oauth2 v0.24.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/oauth2 v0.25.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.36.0 // indirect
+	google.golang.org/protobuf v1.36.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 
 )
