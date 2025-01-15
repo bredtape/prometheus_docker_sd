@@ -5,8 +5,9 @@ go 1.23
 toolchain go1.23.2
 
 require (
+	github.com/bredtape/slogging v0.0.0-20240412063852-f039b2c82b7f
 	github.com/docker/docker v27.5.0+incompatible
-	github.com/namsral/flag v1.7.4-pre
+	github.com/peterbourgon/ff/v3 v3.4.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/common v0.60.1

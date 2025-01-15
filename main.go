@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,9 +13,16 @@ import (
 
 	"github.com/bredtape/prometheus_docker_sd/docker"
 	"github.com/bredtape/prometheus_docker_sd/web"
-	"github.com/namsral/flag"
+	"github.com/bredtape/slogging"
+	"github.com/peterbourgon/ff/v3"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	APP = "prometheus_docker_sd"
 )
 
 var (
@@ -22,11 +30,12 @@ var (
 )
 
 func parseArgs() *docker.Config {
-	fs := flag.NewFlagSetWithEnvPrefix(os.Args[0], strings.ToUpper(APP), flag.ExitOnError)
+	envPrefix := strings.ToUpper(APP)
+	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s <options>\n", os.Args[0])
 		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps and replace any - with _\n", strings.ToUpper(APP))
+		fmt.Fprintf(os.Stderr, "Options may also be set from the environment. Prefix with %s_, use all caps. and replace any - with _\n", envPrefix)
+		os.Exit(1)
 	}
 
 	var dockerHost, instancePrefix, externalHost, targetNetworkName string
@@ -39,21 +48,27 @@ func parseArgs() *docker.Config {
 	fs.DurationVar(&refreshInterval, "refresh-interval", 60*time.Second, "Refresh interval to query the Docker host for containers")
 	fs.StringVar(&httpAddress, "http-address", ":9200", "http address to serve metrics on")
 	fs.StringVar(&externalUrl, "external-url", "", "External URL of this service, defaults to http://<instance-prefix>:9200. Added to metrics label, so an alert can redirect a user to the /containers page")
-	var logLevel string
-	fs.StringVar(&logLevel, "log-level", "INFO", "Specify log level (DEBUG, INFO, WARN, ERROR)")
 
+	var logLevel slog.Level
+	fs.TextVar(&logLevel, "log-level", slog.LevelDebug-3, "Log level")
+	var logJSON bool
+	fs.BoolVar(&logJSON, "log-json", false, "Log in JSON format")
 	var help bool
-	fs.BoolVar(&help, "help", false, "Display help")
+	fs.BoolVar(&help, "help", false, "Show help")
 
-	err := fs.Parse(os.Args[1:])
+	err := ff.Parse(fs, os.Args[1:], ff.WithEnvVarPrefix(envPrefix))
 	if err != nil {
-		bail(fs, "failed to parse args: %v", err)
+		bail(fs, "parse error %s", err.Error())
+		os.Exit(2)
 	}
 
 	if help {
 		fs.Usage()
 		os.Exit(2)
 	}
+
+	slogging.SetDefaults(slog.HandlerOptions{Level: logLevel}, logJSON)
+	slogging.LogBuildInfo()
 
 	if len(targetNetworkName) == 0 {
 		bail(fs, "'target-network-name' required")
@@ -62,18 +77,6 @@ func parseArgs() *docker.Config {
 	if len(instancePrefix) == 0 {
 		bail(fs, "'instance-prefix' required")
 	}
-
-	level := map[string]slog.Level{
-		"debug": slog.LevelDebug,
-		"info":  slog.LevelInfo,
-		"warn":  slog.LevelWarn,
-		"error": slog.LevelError}[strings.ToLower(logLevel)]
-	if level.String() == "" {
-		bail(fs, "'log-level' invalid log level %s", logLevel)
-	}
-
-	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})
-	slog.SetDefault(slog.New(h))
 
 	if externalUrl == "" {
 		externalUrl = "http://" + instancePrefix + ":9200"
@@ -183,4 +186,78 @@ func bail(fs *flag.FlagSet, format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 	fs.Usage()
 	os.Exit(3)
+}
+
+var (
+	labelKeys = []string{"external_url", "target_network"}
+
+	metric_attempts = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: APP,
+		Name:      "discovery_attempts_total",
+		Help:      "Number of attempts to discover containers and write result"}, labelKeys)
+
+	metric_errors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: APP,
+		Name:      "discovery_attempts_errors_total",
+		Help:      "Number of attempts to discover containers and write result, that resulted in some error"}, labelKeys)
+
+	metric_count = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: APP,
+		Name:      "containers_count",
+		Help:      "Number of containers discovered"},
+		labelKeys)
+
+	metric_ignored = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: APP,
+		Name:      "containers_ignored_count",
+		Help:      "Number of containers discovered that were ignored"},
+		labelKeys)
+
+	metric_ignored_containers_not_in_network = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: APP,
+		Name:      "containers_not_in_target_network_count",
+		Help:      "Number of containers discovered with the 'prometheus_job' label set, but not in the target network"},
+		labelKeys)
+
+	metric_ignored_no_ports = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: APP,
+		Name:      "containers_no_exposed_ports_count",
+		Help:      "Number of containers discovered with the 'prometheus_job' label set, but with no exposed TCP ports"},
+		labelKeys)
+
+	metric_multiple_ports = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: APP,
+		Name:      "containers_multiple_ports_not_explicit_count",
+		Help:      "Number of containers discovered with the 'prometheus_job' label set, with multiple exposed TCP ports, but the prometheus_scrape_port is not defined"},
+		labelKeys)
+)
+
+func updateMetrics(externalUrl, targetNetwork string, xs []docker.Meta) {
+	var ignored, notInNetwork, noPorts, notExplicit float64
+	for _, x := range xs {
+		if !x.HasJob {
+			ignored++
+			continue
+		}
+
+		if !x.IsInTargetNetwork {
+			notInNetwork++
+			continue
+		}
+
+		if !x.HasTCPPorts {
+			noPorts++
+			continue
+		}
+
+		if !x.HasExplicitPort {
+			notExplicit++
+		}
+	}
+
+	metric_count.WithLabelValues(externalUrl, targetNetwork).Set(float64(len(xs)))
+	metric_ignored.WithLabelValues(externalUrl, targetNetwork).Set(ignored)
+	metric_ignored_containers_not_in_network.WithLabelValues(externalUrl, targetNetwork).Set(notInNetwork)
+	metric_ignored_no_ports.WithLabelValues(externalUrl, targetNetwork).Set(noPorts)
+	metric_multiple_ports.WithLabelValues(externalUrl, targetNetwork).Set(notExplicit)
 }
